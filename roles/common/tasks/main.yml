@@ -1,4 +1,10 @@
 ---
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ rvdas_hostname }}"
+  when: ansible_facts['os_family'] != 'Darwin'
+  tags: [common, hostname]
+
 - name: Create rvdas system user
   ansible.builtin.import_tasks: user.yml
   when: ansible_facts['os_family'] != 'Darwin'
