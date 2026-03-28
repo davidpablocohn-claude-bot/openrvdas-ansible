@@ -178,7 +178,10 @@ hosts_file, host, user, os_type = sys.argv[1], sys.argv[2], sys.argv[3], sys.arg
 with open(hosts_file) as f:
     content = f.read()
 
-host_entry = f"{host} ansible_user={user} ansible_python_interpreter=/usr/bin/python3"
+if host in ('localhost', '127.0.0.1', '::1'):
+    host_entry = f"{host} ansible_connection=local ansible_python_interpreter=/usr/bin/python3"
+else:
+    host_entry = f"{host} ansible_user={user} ansible_python_interpreter=/usr/bin/python3"
 
 def ensure_host_in_section(text, section, entry):
     """Add entry under [section] if not already present."""
