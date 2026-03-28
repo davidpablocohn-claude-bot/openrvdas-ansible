@@ -227,7 +227,7 @@ echo "  Press Enter to accept the value shown in [brackets]."
 # ── Target host ───────────────────────────────────────────────────────────────
 section "Target Host"
 
-ask TARGET_HOST "Hostname or IP of target machine" "${PREF_TARGET_HOST:-}"
+ask TARGET_HOST "Hostname or IP of target machine (use 'localhost' to install on this machine)" "${PREF_TARGET_HOST:-}"
 ask RVDAS_HOSTNAME "Hostname to set on the target machine" "${PREF_RVDAS_HOSTNAME:-${TARGET_HOST}}"
 ask ANSIBLE_USER "SSH user on target" "${PREF_ANSIBLE_USER:-root}"
 ask OS_TYPE "OS type (ubuntu / centos / macos)" "${PREF_OS_TYPE:-ubuntu}"
