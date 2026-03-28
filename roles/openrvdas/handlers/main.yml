@@ -1,0 +1,7 @@
+---
+- name: restart supervisor
+  ansible.builtin.service:
+    name: "{{ supervisor_service_name }}"
+    state: restarted
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  listen: restart supervisor

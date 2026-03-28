@@ -1,0 +1,25 @@
+---
+- name: Create install root directory
+  ansible.builtin.file:
+    path: "{{ install_root }}"
+    state: directory
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0755"
+
+- name: Create OpenRVDAS log directory
+  ansible.builtin.file:
+    path: /var/log/openrvdas
+    state: directory
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0755"
+
+- name: Create OpenRVDAS disk cache directory
+  ansible.builtin.file:
+    path: /var/tmp/openrvdas/disk_cache
+    state: directory
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0755"
+    recurse: true

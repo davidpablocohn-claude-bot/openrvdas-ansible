@@ -1,0 +1,10 @@
+# Secrets — never commit these
+vault/.vault_pass
+vault/secrets.yml
+
+# Generated preferences file from configure_and_install.sh
+.configure_preferences
+
+# Per-host config files contain no secrets but may contain site-specific paths
+# — comment out the next line if you want to commit them
+# inventory/host_vars/

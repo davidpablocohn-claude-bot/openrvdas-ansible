@@ -1,0 +1,10 @@
+---
+# macOS package installation via Homebrew
+# Homebrew must not run as root, so become is explicitly disabled here.
+
+- name: Install Homebrew packages
+  community.general.homebrew:
+    name: "{{ homebrew_packages }}"
+    state: present
+    update_homebrew: true
+  become: false

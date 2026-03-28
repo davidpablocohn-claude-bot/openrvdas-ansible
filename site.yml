@@ -1,0 +1,61 @@
+---
+# OpenRVDAS Ansible Playbook
+# Replaces utils/install_openrvdas.sh
+#
+# Usage:
+#   ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass
+#
+# Run a subset with tags:
+#   ansible-playbook site.yml -i inventory/hosts.ini --tags openrvdas,supervisor
+#
+# Override variables at runtime:
+#   ansible-playbook site.yml -i inventory/hosts.ini -e "use_ssl=true openrvdas_branch=dev"
+
+- name: Install OpenRVDAS
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vault/secrets.yml
+
+  pre_tasks:
+    - name: Set derived network variables
+      ansible.builtin.set_fact:
+        server_port: "{{ ssl_server_port if use_ssl else nonssl_server_port }}"
+        websocket_protocol: "{{ 'wss' if use_ssl else 'ws' }}"
+      tags: always
+
+    - name: Validate SSL certificate paths when using provided certs
+      ansible.builtin.assert:
+        that:
+          - ssl_crt_location is defined and ssl_crt_location | length > 0
+          - ssl_key_location is defined and ssl_key_location | length > 0
+        msg: "ssl_crt_location and ssl_key_location must be set when have_ssl_certificate is true"
+      when: use_ssl and have_ssl_certificate
+      tags: always
+
+  roles:
+    - role: common
+      tags: [common]
+
+    - role: packages
+      tags: [packages]
+
+    - role: openrvdas
+      tags: [openrvdas]
+
+    - role: nginx
+      tags: [nginx]
+      when: install_gui
+
+    - role: uwsgi
+      tags: [uwsgi]
+      when: install_gui
+
+    - role: supervisor
+      tags: [supervisor]
+
+    - role: firewall
+      tags: [firewall]
+      when: ansible_facts['os_family'] == 'RedHat' and install_firewalld

@@ -1,0 +1,54 @@
+---
+# ── Supplied certificate ───────────────────────────────────────────────────────
+- name: Copy supplied SSL certificate into place
+  ansible.builtin.copy:
+    src: "{{ ssl_crt_location }}"
+    dest: "{{ ssl_crt_location }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: have_ssl_certificate
+
+- name: Copy supplied SSL private key into place
+  ansible.builtin.copy:
+    src: "{{ ssl_key_location }}"
+    dest: "{{ ssl_key_location }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: have_ssl_certificate
+
+# ── Self-signed certificate ────────────────────────────────────────────────────
+- name: Generate self-signed SSL private key
+  community.crypto.openssl_privatekey:
+    path: "{{ ssl_key_location }}"
+    size: 2048
+    owner: root
+    group: root
+    mode: "0600"
+  when: not have_ssl_certificate
+
+- name: Generate certificate signing request
+  community.crypto.openssl_csr:
+    path: "{{ ssl_key_location | regex_replace('\\.key$', '.csr') }}"
+    privatekey_path: "{{ ssl_key_location }}"
+    common_name: "{{ ansible_hostname }}"
+    subject_alt_name:
+      - "DNS:{{ ansible_hostname }}"
+      - "DNS:localhost"
+      - "IP:127.0.0.1"
+      - "IP:{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+  when: not have_ssl_certificate
+
+- name: Generate self-signed certificate (valid 10 years)
+  community.crypto.x509_certificate:
+    path: "{{ ssl_crt_location }}"
+    privatekey_path: "{{ ssl_key_location }}"
+    csr_path: "{{ ssl_key_location | regex_replace('\\.key$', '.csr') }}"
+    provider: selfsigned
+    selfsigned_not_after: "+3650d"
+    owner: root
+    group: root
+    mode: "0644"
+    force: false
+  when: not have_ssl_certificate

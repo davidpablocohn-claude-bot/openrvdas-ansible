@@ -1,0 +1,44 @@
+---
+# macOS-specific settings
+# (ansible_os_family == 'Darwin')
+#
+# Notes:
+#  - The rvdas_user concept does not apply on macOS; the current user is used.
+#  - install_root should be set to a user-writable path, e.g. /usr/local/openrvdas
+#    or ~/openrvdas, since /opt requires root on macOS.
+#  - Homebrew cannot run as root; the packages role sets become: false for brew tasks.
+
+# Use the Ansible connecting user instead of creating a new system user
+rvdas_user: "{{ ansible_user_id }}"
+rvdas_group: "{{ ansible_user_id }}"
+rvdas_groups: []
+
+# Default to a user-writable location on macOS
+install_root: /usr/local
+
+# ── Homebrew ──────────────────────────────────────────────────────────────────
+# arm64 (Apple Silicon) uses /opt/homebrew; Intel uses /usr/local
+homebrew_prefix: "{{ '/opt/homebrew' if ansible_architecture == 'arm64' else '/usr/local' }}"
+
+# ── Supervisor (managed by Homebrew / launchd) ────────────────────────────────
+supervisor_service_name: supervisor
+supervisor_conf_dir: "{{ homebrew_prefix }}/etc/supervisor.d"
+supervisor_conf_suffix: ini
+supervisor_sock: "{{ homebrew_prefix }}/var/run/supervisor.sock"
+
+# ── Nginx ─────────────────────────────────────────────────────────────────────
+nginx_bin: "{{ homebrew_prefix }}/bin/nginx"
+nginx_uwsgi_params_src: "{{ homebrew_prefix }}/etc/nginx/uwsgi_params"
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+etc_home: "{{ homebrew_prefix }}/etc"
+
+# ── Python 3.13 via Homebrew ──────────────────────────────────────────────────
+python_version: "3.13"
+python_bin: "{{ homebrew_prefix }}/opt/python@{{ python_version }}/bin/python{{ python_version }}"
+
+homebrew_packages:
+  - "python@{{ python_version }}"
+  - git
+  - nginx
+  - supervisor

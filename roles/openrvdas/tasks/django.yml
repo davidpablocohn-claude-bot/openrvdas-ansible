@@ -1,0 +1,50 @@
+---
+# django_gui/migrations/ is in .gitignore and is not cloned from the repo.
+# makemigrations generates the migration files; migrate applies them.
+- name: Generate Django migrations (makemigrations)
+  ansible.builtin.command:
+    cmd: "{{ install_root }}/openrvdas/venv/bin/python manage.py makemigrations django_gui --no-input"
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  register: django_makemigrations_result
+  changed_when: "'No changes detected' not in django_makemigrations_result.stdout"
+
+# Migrations must always run - logger_manager uses Django even without the web GUI
+- name: Run Django database migrations
+  ansible.builtin.command:
+    cmd: "{{ install_root }}/openrvdas/venv/bin/python manage.py migrate --no-input"
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  register: django_migrate_result
+  changed_when: "'No migrations to apply' not in django_migrate_result.stdout"
+
+- name: Collect Django static files
+  ansible.builtin.command:
+    cmd: "{{ install_root }}/openrvdas/venv/bin/python manage.py collectstatic --no-input"
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  changed_when: false
+  when: install_gui
+
+- name: Create Django superuser (if not already present)
+  ansible.builtin.shell:
+    cmd: |
+      {{ install_root }}/openrvdas/venv/bin/python manage.py shell -c "
+      from django.contrib.auth import get_user_model
+      User = get_user_model()
+      if not User.objects.filter(username='{{ rvdas_user }}').exists():
+          User.objects.create_superuser('{{ rvdas_user }}', '', '{{ rvdas_database_password }}')
+          print('created')
+      else:
+          print('exists')
+      "
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  register: superuser_result
+  changed_when: "'created' in superuser_result.stdout"
+  no_log: true
+  when: install_gui

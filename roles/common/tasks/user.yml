@@ -1,0 +1,17 @@
+---
+- name: Create rvdas group
+  ansible.builtin.group:
+    name: "{{ rvdas_group }}"
+    state: present
+    system: true
+
+- name: Create rvdas system user
+  ansible.builtin.user:
+    name: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    groups: "{{ rvdas_groups }}"
+    append: true
+    shell: /bin/bash
+    system: true
+    create_home: true
+    comment: "OpenRVDAS service user"

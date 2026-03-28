@@ -1,0 +1,26 @@
+---
+# CentOS / RHEL / Rocky Linux package installation
+# Minimum supported: Rocky/CentOS 8
+
+- name: Install EPEL repository
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: Enable CRB repository (required for python3.12-devel on Rocky 9)
+  ansible.builtin.command:
+    cmd: dnf config-manager --set-enabled crb
+  changed_when: false
+  when: ansible_distribution_major_version | int >= 9
+
+- name: Install system packages
+  ansible.builtin.dnf:
+    name: "{{ system_packages + python_packages }}"
+    state: present
+
+- name: Disable system-managed nginx (will run under supervisord)
+  ansible.builtin.service:
+    name: nginx
+    enabled: false
+    state: stopped
+  failed_when: false

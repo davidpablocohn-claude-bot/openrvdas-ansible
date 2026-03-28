@@ -1,0 +1,7 @@
+---
+- name: Enable and start supervisor service
+  ansible.builtin.service:
+    name: "{{ supervisor_service_name }}"
+    enabled: "{{ openrvdas_autostart }}"
+    state: started
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"

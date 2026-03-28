@@ -1,0 +1,40 @@
+---
+# Ubuntu / Debian / Raspbian OS-specific settings
+# (ansible_os_family == 'Debian')
+
+# ── Supervisor ────────────────────────────────────────────────────────────────
+supervisor_service_name: supervisor
+supervisor_conf_dir: /etc/supervisor/conf.d
+supervisor_conf_suffix: conf
+supervisor_sock: /var/run/supervisor.sock
+
+# ── Nginx ─────────────────────────────────────────────────────────────────────
+nginx_bin: /usr/sbin/nginx
+nginx_uwsgi_params_src: /etc/nginx/uwsgi_params
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+etc_home: /etc
+
+# ── User groups ───────────────────────────────────────────────────────────────
+rvdas_groups:
+  - tty
+  - dialout
+
+# ── Python 3.13 via deadsnakes PPA ────────────────────────────────────────────
+python_version: "3.13"
+python_bin: /usr/bin/python3.13
+
+system_packages:
+  - git
+  - nginx
+  - supervisor
+  - openssh-server
+  - build-essential
+  - libreadline-dev
+  - libssl-dev
+  - libsqlite3-dev
+
+python_packages:
+  - "python{{ python_version }}"
+  - "python{{ python_version }}-venv"
+  - "python{{ python_version }}-dev"

@@ -1,0 +1,10 @@
+---
+- name: Render uWSGI configuration
+  ansible.builtin.template:
+    src: openrvdas_uwsgi.ini.j2
+    dest: "{{ install_root }}/openrvdas/django_gui/openrvdas_uwsgi.ini"
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [uwsgi]

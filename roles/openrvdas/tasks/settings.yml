@@ -1,0 +1,95 @@
+---
+# ── django_gui/settings.py ────────────────────────────────────────────────────
+- name: Copy django_gui/settings.py from .dist (first install only)
+  ansible.builtin.copy:
+    src: "{{ install_root }}/openrvdas/django_gui/settings.py.dist"
+    dest: "{{ install_root }}/openrvdas/django_gui/settings.py"
+    remote_src: true
+    force: false
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+
+- name: Set WEBSOCKET_PROTOCOL in django_gui/settings.py
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/django_gui/settings.py"
+    regexp: "WEBSOCKET_PROTOCOL = '(ws|wss)'"
+    replace: "WEBSOCKET_PROTOCOL = '{{ websocket_protocol }}'"
+
+- name: Set WEBSOCKET_PORT in django_gui/settings.py
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/django_gui/settings.py"
+    regexp: "WEBSOCKET_PORT = \\d+"
+    replace: "WEBSOCKET_PORT = {{ server_port }}"
+
+# ── database/settings.py ──────────────────────────────────────────────────────
+- name: Copy database/settings.py from .dist (first install only)
+  ansible.builtin.copy:
+    src: "{{ install_root }}/openrvdas/database/settings.py.dist"
+    dest: "{{ install_root }}/openrvdas/database/settings.py"
+    remote_src: true
+    force: false
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+
+- name: Set database user in database/settings.py
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/database/settings.py"
+    regexp: "DEFAULT_DATABASE_USER = 'rvdas'"
+    replace: "DEFAULT_DATABASE_USER = '{{ rvdas_user }}'"
+
+- name: Set database password in database/settings.py
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/database/settings.py"
+    regexp: "DEFAULT_DATABASE_PASSWORD = 'rvdas'"
+    replace: "DEFAULT_DATABASE_PASSWORD = '{{ rvdas_database_password }}'"
+
+# ── display/js/widgets/settings.js ───────────────────────────────────────────
+- name: Copy display/js/widgets/settings.js from .dist
+  ansible.builtin.copy:
+    src: "{{ install_root }}/openrvdas/display/js/widgets/settings.js.dist"
+    dest: "{{ install_root }}/openrvdas/display/js/widgets/settings.js"
+    remote_src: true
+    force: false
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+
+- name: Set WEBSOCKET_PROTOCOL in display/js/widgets/settings.js
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/display/js/widgets/settings.js"
+    regexp: "var WEBSOCKET_PROTOCOL = '(ws|wss)';"
+    replace: "var WEBSOCKET_PROTOCOL = '{{ websocket_protocol }}';"
+
+- name: Set WEBSOCKET_PORT in display/js/widgets/settings.js
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/display/js/widgets/settings.js"
+    regexp: "var WEBSOCKET_PORT = \\d+;"
+    replace: "var WEBSOCKET_PORT = {{ server_port }};"
+
+# ── static/js/widgets/settings.js (duplicate copy) ───────────────────────────
+- name: Copy static/js/widgets/settings.js from .dist
+  ansible.builtin.copy:
+    src: "{{ install_root }}/openrvdas/static/js/widgets/settings.js.dist"
+    dest: "{{ install_root }}/openrvdas/static/js/widgets/settings.js"
+    remote_src: true
+    force: false
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  failed_when: false
+
+- name: Set WEBSOCKET_PROTOCOL in static/js/widgets/settings.js
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/static/js/widgets/settings.js"
+    regexp: "var WEBSOCKET_PROTOCOL = '(ws|wss)';"
+    replace: "var WEBSOCKET_PROTOCOL = '{{ websocket_protocol }}';"
+  failed_when: false
+
+- name: Set WEBSOCKET_PORT in static/js/widgets/settings.js
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/static/js/widgets/settings.js"
+    regexp: "var WEBSOCKET_PORT = \\d+;"
+    replace: "var WEBSOCKET_PORT = {{ server_port }};"
+  failed_when: false

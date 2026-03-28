@@ -1,0 +1,51 @@
+---
+# OpenRVDAS installation defaults (non-secret)
+# Override these per-host in host_vars/ or at runtime with -e
+
+# ── Installation paths ────────────────────────────────────────────────────────
+install_root: /opt
+rvdas_user: rvdas
+rvdas_group: rvdas
+
+# ── Repository ────────────────────────────────────────────────────────────────
+openrvdas_repo: https://github.com/oceandatatools/openrvdas
+openrvdas_branch: master
+
+# Optional HTTP proxy (empty string = no proxy)
+http_proxy: ""
+
+# ── Web server ports ──────────────────────────────────────────────────────────
+nonssl_server_port: 80
+ssl_server_port: 443
+
+# ── SSL / TLS ─────────────────────────────────────────────────────────────────
+# Set use_ssl: true to enable HTTPS
+use_ssl: false
+
+# Set have_ssl_certificate: true if you are supplying your own cert/key.
+# Set to false to have Ansible generate a self-signed certificate.
+have_ssl_certificate: false
+
+# Paths where the cert and key will be placed (or already exist).
+ssl_crt_location: "{{ install_root }}/openrvdas/openrvdas.crt"
+ssl_key_location: "{{ install_root }}/openrvdas/openrvdas.key"
+
+# ── Feature flags ─────────────────────────────────────────────────────────────
+openrvdas_autostart: true   # start OpenRVDAS services on boot
+install_gui: true           # install nginx + uWSGI web interface
+install_firewalld: false    # configure firewalld (CentOS/RHEL only)
+
+# ── Additional firewall ports (CentOS/RHEL only) ──────────────────────────────
+tcp_ports_to_open: []
+udp_ports_to_open: []
+
+# ── Simulator ─────────────────────────────────────────────────────────────────
+install_simulate_nbp: true  # install NBP1406 test data simulator
+run_simulate_nbp: true      # autostart the simulator on boot
+
+# ── Supervisord web interface ─────────────────────────────────────────────────
+supervisord_webinterface: false
+supervisord_webinterface_auth: false
+supervisord_webinterface_port: 9001
+supervisord_webinterface_user: "{{ rvdas_user }}"
+# supervisord_webinterface_pass is in vault/secrets.yml

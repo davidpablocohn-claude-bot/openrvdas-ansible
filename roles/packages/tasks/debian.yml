@@ -1,0 +1,31 @@
+---
+# Ubuntu / Debian package installation
+# Installs Python 3.13 via the deadsnakes PPA
+
+- name: Install prerequisite packages for PPA management
+  ansible.builtin.apt:
+    name:
+      - software-properties-common
+      - apt-transport-https
+      - ca-certificates
+    state: present
+    update_cache: true
+
+- name: Add deadsnakes PPA for Python {{ python_version }}
+  ansible.builtin.apt_repository:
+    repo: ppa:deadsnakes/ppa
+    state: present
+    update_cache: true
+
+- name: Install system packages
+  ansible.builtin.apt:
+    name: "{{ system_packages + python_packages }}"
+    state: present
+    update_cache: true
+
+- name: Disable system-managed nginx (will run under supervisord)
+  ansible.builtin.service:
+    name: nginx
+    enabled: false
+    state: stopped
+  failed_when: false

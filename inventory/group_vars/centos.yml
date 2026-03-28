@@ -1,0 +1,44 @@
+---
+# CentOS / RHEL / Rocky Linux OS-specific settings
+# (ansible_os_family == 'RedHat')
+# Minimum supported: CentOS/Rocky 8
+
+# ── Supervisor ────────────────────────────────────────────────────────────────
+supervisor_service_name: supervisord
+supervisor_conf_dir: /etc/supervisord.d
+supervisor_conf_suffix: ini
+supervisor_sock: /var/run/supervisor/supervisor.sock
+
+# ── Nginx ─────────────────────────────────────────────────────────────────────
+nginx_bin: /usr/sbin/nginx
+nginx_uwsgi_params_src: /etc/nginx/uwsgi_params
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+etc_home: /etc
+
+# ── User groups ───────────────────────────────────────────────────────────────
+rvdas_groups:
+  - tty
+  - wheel
+
+# ── Python 3.12 from AppStream / EPEL ─────────────────────────────────────────
+# Python 3.13 is not yet in EPEL for Rocky 9; use 3.12 from AppStream.
+python_version: "3.12"
+python_bin: /usr/bin/python3.12
+
+system_packages:
+  - git
+  - nginx
+  - supervisor
+  - wget
+  - gcc
+  - zlib-devel
+  - openssl-devel
+  - readline-devel
+  - libffi-devel
+  - sqlite
+  - sqlite-devel
+
+python_packages:
+  - "python{{ python_version }}"
+  - "python{{ python_version }}-devel"

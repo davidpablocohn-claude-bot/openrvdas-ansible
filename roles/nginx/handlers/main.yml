@@ -1,0 +1,7 @@
+---
+- name: reload supervisor
+  ansible.builtin.shell:
+    cmd: supervisorctl reread && supervisorctl update
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  failed_when: false
+  listen: reload supervisor

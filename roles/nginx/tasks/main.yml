@@ -1,0 +1,25 @@
+---
+- name: Configure SSL certificate
+  ansible.builtin.import_tasks: ssl.yml
+  when: use_ssl
+  tags: [nginx, ssl]
+
+- name: Copy uwsgi_params from system nginx into project
+  ansible.builtin.copy:
+    src: "{{ nginx_uwsgi_params_src }}"
+    dest: "{{ install_root }}/openrvdas/django_gui/uwsgi_params"
+    remote_src: true
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  tags: [nginx]
+
+- name: Render nginx configuration
+  ansible.builtin.template:
+    src: openrvdas_nginx.conf.j2
+    dest: "{{ install_root }}/openrvdas/django_gui/openrvdas_nginx.conf"
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [nginx]

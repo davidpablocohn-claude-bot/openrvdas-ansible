@@ -1,0 +1,21 @@
+---
+- name: Bootstrap virtual environment with latest pip, wheel, and setuptools
+  ansible.builtin.pip:
+    name:
+      - pip
+      - wheel
+      - setuptools
+    state: latest
+    virtualenv: "{{ install_root }}/openrvdas/venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+  become: true
+  become_user: "{{ rvdas_user }}"
+
+- name: Install Python requirements from requirements.txt
+  ansible.builtin.pip:
+    requirements: "{{ install_root }}/openrvdas/utils/requirements.txt"
+    virtualenv: "{{ install_root }}/openrvdas/venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+    extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
+  become: true
+  become_user: "{{ rvdas_user }}"

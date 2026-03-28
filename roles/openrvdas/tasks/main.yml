@@ -1,0 +1,16 @@
+---
+- name: Clone / update OpenRVDAS repository
+  ansible.builtin.import_tasks: repo.yml
+  tags: [openrvdas, repo]
+
+- name: Set up Python virtual environment
+  ansible.builtin.import_tasks: virtualenv.yml
+  tags: [openrvdas, virtualenv]
+
+- name: Configure settings files
+  ansible.builtin.import_tasks: settings.yml
+  tags: [openrvdas, settings]
+
+- name: Set up Django database
+  ansible.builtin.import_tasks: django.yml
+  tags: [openrvdas, django]

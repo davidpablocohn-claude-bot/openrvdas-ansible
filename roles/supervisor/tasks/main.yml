@@ -1,0 +1,51 @@
+---
+- name: Create supervisor config directory
+  ansible.builtin.file:
+    path: "{{ supervisor_conf_dir }}"
+    state: directory
+    mode: "0755"
+  tags: [supervisor]
+
+- name: Render supervisor base config
+  ansible.builtin.template:
+    src: openrvdas.conf.j2
+    dest: "{{ supervisor_conf_dir }}/openrvdas.{{ supervisor_conf_suffix }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Render logger_manager supervisor config
+  ansible.builtin.template:
+    src: openrvdas_logger_manager.conf.j2
+    dest: "{{ supervisor_conf_dir }}/openrvdas_logger_manager.{{ supervisor_conf_suffix }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Render cached_data_server supervisor config
+  ansible.builtin.template:
+    src: openrvdas_cached_data.conf.j2
+    dest: "{{ supervisor_conf_dir }}/openrvdas_cached_data.{{ supervisor_conf_suffix }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Render Django GUI supervisor config
+  ansible.builtin.template:
+    src: openrvdas_django.conf.j2
+    dest: "{{ supervisor_conf_dir }}/openrvdas_django.{{ supervisor_conf_suffix }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Render simulator supervisor config
+  ansible.builtin.template:
+    src: openrvdas_simulate.conf.j2
+    dest: "{{ supervisor_conf_dir }}/openrvdas_simulate.{{ supervisor_conf_suffix }}"
+    mode: "0644"
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Enable and start supervisor service
+  ansible.builtin.import_tasks: service.yml
+  tags: [supervisor, service]

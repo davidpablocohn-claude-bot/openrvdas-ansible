@@ -1,0 +1,20 @@
+---
+# Configure git safe.directory for FIPS-mode hosts that reject the default
+- name: Configure git safe directory (FIPS compatibility)
+  ansible.builtin.command:
+    cmd: "git config --global --add safe.directory {{ install_root }}/openrvdas"
+  changed_when: false
+
+- name: Clone or update OpenRVDAS repository
+  ansible.builtin.git:
+    repo: "{{ openrvdas_repo }}"
+    dest: "{{ install_root }}/openrvdas"
+    version: "{{ openrvdas_branch }}"
+    update: true
+    force: false
+  become: true
+  become_user: "{{ rvdas_user }}"
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ http_proxy }}"
+  notify: restart supervisor
