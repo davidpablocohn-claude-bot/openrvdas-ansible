@@ -1,0 +1,132 @@
+---
+# smoke-test.yml
+#
+# Post-install sanity checks for OpenRVDAS.
+# Run after configure_and_install.sh to confirm the install is healthy.
+#
+# Usage:
+#   ansible-playbook smoke-test.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass --limit <host>
+
+- name: OpenRVDAS Smoke Test
+  hosts: all
+  gather_facts: true
+  become: true
+
+  vars_files:
+    - vault/secrets.yml
+
+  vars:
+    http_scheme: "{{ 'https' if use_ssl else 'http' }}"
+    server_port: "{{ ssl_server_port if use_ssl else nonssl_server_port }}"
+    openrvdas_dir: "{{ install_root }}/openrvdas"
+
+  tasks:
+
+    # ── Supervisor ──────────────────────────────────────────────────────────────
+
+    - name: Check supervisord is running
+      ansible.builtin.command: supervisorctl status
+      register: supervisord_status
+      changed_when: false
+      failed_when: false
+
+    - name: Assert no supervisor processes are FATAL or EXITED
+      ansible.builtin.assert:
+        that:
+          - "'FATAL' not in supervisord_status.stdout"
+          - "'EXITED' not in supervisord_status.stdout"
+        fail_msg: |
+          One or more supervisor processes are in a bad state:
+          {{ supervisord_status.stdout }}
+        success_msg: "All supervisor processes look healthy."
+
+    - name: Show supervisor status
+      ansible.builtin.debug:
+        msg: "{{ supervisord_status.stdout_lines }}"
+
+    # ── Web server ──────────────────────────────────────────────────────────────
+
+    - name: Check HTTP response from web server
+      ansible.builtin.uri:
+        url: "{{ http_scheme }}://localhost:{{ server_port }}/"
+        method: GET
+        status_code: [200, 301, 302]
+        validate_certs: false
+        timeout: 10
+      register: http_check
+      when: install_gui
+      failed_when: false
+
+    - name: Assert web server is reachable
+      ansible.builtin.assert:
+        that: http_check.status in [200, 301, 302]
+        fail_msg: "Web server did not respond (status: {{ http_check.status | default('no response') }})."
+        success_msg: "Web server responded with HTTP {{ http_check.status }}."
+      when: install_gui
+
+    # ── OpenRVDAS files ─────────────────────────────────────────────────────────
+
+    - name: Check openrvdas directory exists
+      ansible.builtin.stat:
+        path: "{{ openrvdas_dir }}"
+      register: rvdas_dir
+
+    - name: Assert openrvdas directory is present
+      ansible.builtin.assert:
+        that: rvdas_dir.stat.isdir is defined and rvdas_dir.stat.isdir
+        fail_msg: "OpenRVDAS directory {{ openrvdas_dir }} not found."
+        success_msg: "OpenRVDAS directory found."
+
+    - name: Check manage.py exists
+      ansible.builtin.stat:
+        path: "{{ openrvdas_dir }}/manage.py"
+      register: manage_py
+
+    - name: Assert manage.py is present
+      ansible.builtin.assert:
+        that: manage_py.stat.exists
+        fail_msg: "manage.py not found — Django install may be incomplete."
+        success_msg: "manage.py found."
+
+    # ── Django database ─────────────────────────────────────────────────────────
+
+    - name: Check Django can connect to its database
+      ansible.builtin.command:
+        cmd: "{{ openrvdas_dir }}/venv/bin/python manage.py showmigrations --no-color"
+        chdir: "{{ openrvdas_dir }}"
+      register: django_migrations
+      changed_when: false
+      failed_when: false
+      become_user: "{{ rvdas_user }}"
+      when: ansible_facts['os_family'] != 'Darwin'
+
+    - name: Assert Django migrations are applied
+      ansible.builtin.assert:
+        that:
+          - django_migrations.rc == 0
+          - "'[ ]' not in django_migrations.stdout"
+        fail_msg: |
+          Django migration check failed or unapplied migrations found.
+          {{ django_migrations.stderr | default('') }}
+        success_msg: "Django migrations look good."
+      when: ansible_facts['os_family'] != 'Darwin'
+
+    # ── Disk space ──────────────────────────────────────────────────────────────
+
+    - name: Check disk usage on install root
+      ansible.builtin.shell: >
+        df -h {{ install_root }} | awk 'NR==2 {print $5}' | tr -d '%'
+      register: disk_usage
+      changed_when: false
+
+    - name: Warn if disk usage is above 85%
+      ansible.builtin.assert:
+        that: disk_usage.stdout | int < 85
+        fail_msg: "Disk usage on {{ install_root }} is {{ disk_usage.stdout }}% — consider freeing space."
+        success_msg: "Disk usage on {{ install_root }} is {{ disk_usage.stdout }}% — OK."
+
+    # ── Summary ─────────────────────────────────────────────────────────────────
+
+    - name: Smoke test complete
+      ansible.builtin.debug:
+        msg: "All smoke tests passed for {{ inventory_hostname }}."

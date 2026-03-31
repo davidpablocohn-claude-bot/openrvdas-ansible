@@ -11,12 +11,24 @@
   ansible.builtin.command:
     cmd: dnf config-manager --set-enabled crb
   changed_when: false
-  when: ansible_distribution_major_version | int >= 9
+  when: ansible_facts['distribution_major_version'] | int >= 9
+
+- name: Upgrade openssh-server before installing packages (ensures it matches updated OpenSSL)
+  ansible.builtin.dnf:
+    name: openssh-server
+    state: latest
+  when: ansible_connection != 'local'
 
 - name: Install system packages
   ansible.builtin.dnf:
     name: "{{ system_packages + python_packages }}"
     state: present
+
+- name: Restart sshd to pick up upgraded OpenSSL libraries
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+  when: ansible_connection != 'local'
 
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:

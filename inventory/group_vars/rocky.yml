@@ -1,7 +1,7 @@
 ---
-# CentOS / RHEL / Rocky Linux OS-specific settings
+# Rocky Linux OS-specific settings — identical to CentOS/RHEL
 # (ansible_os_family == 'RedHat')
-# Minimum supported: CentOS/Rocky 8
+# Minimum supported: Rocky 8
 
 # ── Supervisor ────────────────────────────────────────────────────────────────
 supervisor_service_name: supervisord
@@ -22,7 +22,6 @@ rvdas_groups:
   - wheel
 
 # ── Python 3.12 from AppStream / EPEL ─────────────────────────────────────────
-# Python 3.13 is not yet in EPEL for Rocky 9; use 3.12 from AppStream.
 python_version: "3.12"
 python_bin: /usr/bin/python3.12
 

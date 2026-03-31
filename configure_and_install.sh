@@ -128,6 +128,51 @@ ask_password() {
 
 yn_to_bool() { [ "$1" = "yes" ] && echo "true" || echo "false"; }
 
+# Returns true if argument looks like an IPv4 address
+is_ip_address() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+
+# Map /etc/os-release ID value to our OS type names
+parse_os_id() {
+    case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
+        ubuntu|debian)      echo "ubuntu" ;;
+        centos|rhel)        echo "centos" ;;
+        rocky)              echo "rocky"  ;;
+        almalinux|alma)     echo "alma"   ;;
+        *)                  echo ""       ;;
+    esac
+}
+
+# Detect hostname and OS from the target. Sets DETECTED_HOSTNAME and DETECTED_OS.
+detect_remote_info() {
+    local host="$1" user="$2"
+    DETECTED_HOSTNAME="" DETECTED_OS=""
+
+    if [ "$host" = "localhost" ] || [ "$host" = "127.0.0.1" ] || [ "$host" = "::1" ]; then
+        DETECTED_HOSTNAME="$(hostname)"
+        if [ "$(uname -s)" = "Darwin" ]; then
+            DETECTED_OS="macos"
+        else
+            local id
+            id=$(grep '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
+            DETECTED_OS="$(parse_os_id "$id")"
+        fi
+        return 0
+    fi
+
+    local ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes"
+    local output
+    output=$(ssh $ssh_opts "${user}@${host}" \
+        'echo "HOSTNAME=$(hostname)"; grep "^ID=" /etc/os-release 2>/dev/null || true' 2>/dev/null)
+
+    [ $? -ne 0 ] && return 1
+
+    DETECTED_HOSTNAME=$(echo "$output" | grep '^HOSTNAME=' | cut -d= -f2)
+    local raw_id
+    raw_id=$(echo "$output" | grep '^ID=' | cut -d= -f2 | tr -d '"')
+    DETECTED_OS="$(parse_os_id "$raw_id")"
+    return 0
+}
+
 # ── Load saved preferences ────────────────────────────────────────────────────
 
 load_prefs() {
@@ -227,10 +272,39 @@ echo "  Press Enter to accept the value shown in [brackets]."
 # ── Target host ───────────────────────────────────────────────────────────────
 section "Target Host"
 
-ask TARGET_HOST "Hostname or IP of target machine (use 'localhost' to install on this machine)" "${PREF_TARGET_HOST:-}"
-ask RVDAS_HOSTNAME "Hostname to set on the target machine" "${PREF_RVDAS_HOSTNAME:-${TARGET_HOST}}"
+echo "  (Use 'localhost' to install on this machine)"
+ask TARGET_HOST "Hostname or IP of target" "${PREF_TARGET_HOST:-}"
 ask ANSIBLE_USER "SSH user on target" "${PREF_ANSIBLE_USER:-root}"
-ask OS_TYPE "OS type (ubuntu / centos / macos)" "${PREF_OS_TYPE:-ubuntu}"
+
+# Detect hostname and OS from the target machine
+echo "  Connecting to ${TARGET_HOST} to detect system info..."
+detect_remote_info "$TARGET_HOST" "$ANSIBLE_USER"
+
+# Suggest the detected hostname, or fall back to the target (if it's a name) or saved pref
+if [ -n "$DETECTED_HOSTNAME" ]; then
+    DEFAULT_HOSTNAME="$DETECTED_HOSTNAME"
+elif is_ip_address "$TARGET_HOST"; then
+    DEFAULT_HOSTNAME="${PREF_RVDAS_HOSTNAME:-}"
+else
+    DEFAULT_HOSTNAME="${PREF_RVDAS_HOSTNAME:-${TARGET_HOST}}"
+fi
+ask RVDAS_HOSTNAME "Hostname to set on target" "$DEFAULT_HOSTNAME"
+
+# Use detected OS type, or prompt if detection failed
+if [ -n "$DETECTED_OS" ]; then
+    OS_TYPE="$DETECTED_OS"
+    echo "  Detected OS: $OS_TYPE"
+else
+    echo "  Could not detect OS type (SSH may not be available yet)."
+    VALID_OS_TYPES="ubuntu centos rocky alma macos"
+    while true; do
+        ask OS_TYPE "OS type (ubuntu / centos / rocky / alma / macos)" "${PREF_OS_TYPE:-ubuntu}"
+        if echo "$VALID_OS_TYPES" | grep -qw "$OS_TYPE"; then
+            break
+        fi
+        echo "    Invalid OS type '$OS_TYPE'. Please enter one of: $VALID_OS_TYPES"
+    done
+fi
 
 # ── Installation paths ────────────────────────────────────────────────────────
 section "Installation"
@@ -245,7 +319,6 @@ ask HTTP_PROXY "HTTP proxy URL (blank for none)" "${PREF_HTTP_PROXY:-}"
 section "Web Server"
 
 ask_yn USE_SSL "Enable SSL/HTTPS?" "${PREF_USE_SSL:-no}"
-ask NONSSL_SERVER_PORT "HTTP port" "${PREF_NONSSL_SERVER_PORT:-80}"
 
 if [ "$USE_SSL" = "yes" ]; then
     ask SSL_SERVER_PORT "HTTPS port" "${PREF_SSL_SERVER_PORT:-443}"
@@ -258,7 +331,9 @@ if [ "$USE_SSL" = "yes" ]; then
         SSL_KEY_LOCATION="${INSTALL_ROOT}/openrvdas/openrvdas.key"
         echo "  A self-signed certificate will be generated automatically."
     fi
+    NONSSL_SERVER_PORT="${PREF_NONSSL_SERVER_PORT:-80}"
 else
+    ask NONSSL_SERVER_PORT "HTTP port" "${PREF_NONSSL_SERVER_PORT:-80}"
     SSL_SERVER_PORT="${PREF_SSL_SERVER_PORT:-443}"
     HAVE_SSL_CERTIFICATE="${PREF_HAVE_SSL_CERTIFICATE:-no}"
     SSL_CRT_LOCATION="${PREF_SSL_CRT_LOCATION:-${INSTALL_ROOT}/openrvdas/openrvdas.crt}"
@@ -271,7 +346,7 @@ section "Features"
 ask_yn OPENRVDAS_AUTOSTART "Start services automatically on boot?" "${PREF_OPENRVDAS_AUTOSTART:-yes}"
 ask_yn INSTALL_GUI "Install nginx + uWSGI web interface?" "${PREF_INSTALL_GUI:-yes}"
 
-if [ "$OS_TYPE" = "centos" ]; then
+if [ "$OS_TYPE" = "centos" ] || [ "$OS_TYPE" = "rocky" ] || [ "$OS_TYPE" = "alma" ]; then
     ask_yn INSTALL_FIREWALLD "Configure firewalld?" "${PREF_INSTALL_FIREWALLD:-no}"
     if [ "$INSTALL_FIREWALLD" = "yes" ]; then
         ask TCP_PORTS_TO_OPEN "Extra TCP ports to open (space-separated, blank for none)" "${PREF_TCP_PORTS_TO_OPEN:-}"
@@ -436,3 +511,15 @@ ansible-playbook site.yml \
     -i inventory/hosts.ini \
     --vault-password-file "$VAULT_PASS_FILE" \
     --limit "$TARGET_HOST"
+
+# ── Smoke test ────────────────────────────────────────────────────────────────
+echo ""
+ask_yn RUN_SMOKE_TEST "Run smoke test to verify the installation?" "yes"
+if [ "$RUN_SMOKE_TEST" = "yes" ]; then
+    section "Running Smoke Test"
+    echo ""
+    ansible-playbook smoke-test.yml \
+        -i inventory/hosts.ini \
+        --vault-password-file "$VAULT_PASS_FILE" \
+        --limit "$TARGET_HOST"
+fi

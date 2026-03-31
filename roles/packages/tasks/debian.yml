@@ -23,6 +23,7 @@
     state: present
     update_cache: true
 
+
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:
     name: nginx

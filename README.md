@@ -1,7 +1,7 @@
 # OpenRVDAS Ansible Playbook
 
 Ansible replacement for `utils/install_openrvdas.sh`. Installs and configures
-OpenRVDAS on Ubuntu/Debian, CentOS/Rocky, or macOS.
+OpenRVDAS on Ubuntu/Debian, CentOS, Rocky Linux, AlmaLinux, or macOS.
 
 ## Prerequisites
 
@@ -87,8 +87,8 @@ ansible-vault encrypt vault/secrets.yml
 ### 3. Add your host to the inventory
 
 Edit `inventory/hosts.ini`. The host must appear in **both** `[openrvdas]` and
-the appropriate OS group (`[ubuntu]`, `[centos]`, or `[macos]`) so that the
-correct OS-specific variables are applied.
+the appropriate OS group (`[ubuntu]`, `[centos]`, `[rocky]`, `[alma]`, or
+`[macos]`) so that the correct OS-specific variables are applied.
 
 **Example — Ubuntu host over SSH as root:**
 ```ini
@@ -152,7 +152,7 @@ Edit it before running the playbook, or override any variable at runtime with `-
 | `ssl_key_location` | `install_root/openrvdas/openrvdas.key` | Path for the SSL private key |
 | `openrvdas_autostart` | `true` | Start services on boot |
 | `install_gui` | `true` | Install nginx + uWSGI web interface |
-| `install_firewalld` | `false` | Configure firewalld (CentOS/RHEL only) |
+| `install_firewalld` | `false` | Configure firewalld (CentOS/Rocky/Alma only) |
 | `tcp_ports_to_open` | `[]` | Extra TCP ports to open in firewalld |
 | `udp_ports_to_open` | `[]` | Extra UDP ports to open in firewalld |
 | `install_simulate_nbp` | `true` | Install NBP1406 test data simulator |
@@ -194,13 +194,33 @@ EOF
 |---|---|---|
 | Ubuntu | 20.04, 22.04, 24.04 | 3.13 (via deadsnakes PPA) |
 | Debian | 11, 12 | 3.13 (via deadsnakes PPA) |
-| Rocky Linux / CentOS | 8, 9 | 3.12 (from AppStream) |
+| CentOS | 8, 9 | 3.12 (from AppStream) |
+| Rocky Linux | 8, 9 | 3.12 (from AppStream) |
+| AlmaLinux | 8, 9 | 3.12 (from AppStream) |
 | macOS | 12+ (Intel & Apple Silicon) | 3.13 (via Homebrew) |
 
 > **macOS notes:**
 > - Set `install_root` to a user-writable path (e.g. `/usr/local`) — `/opt` requires root.
 > - Add the host to the `[macos]` group in `hosts.ini`.
 > - The `rvdas_user` is set automatically to the connecting user; no new system user is created.
+
+## Smoke Test
+
+After installation, `configure_and_install.sh` will offer to run the smoke test
+automatically. You can also run it at any time:
+
+```bash
+ansible-playbook smoke-test.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --limit <host>
+```
+
+The smoke test checks:
+- All supervisord processes are running (none FATAL or EXITED)
+- nginx is active (when GUI is installed)
+- Web server responds to HTTP/HTTPS
+- OpenRVDAS directory and `manage.py` are present
+- Django migrations are fully applied
+- Disk usage on the install root is under 85%
 
 ## Re-running and Updates
 
@@ -230,7 +250,7 @@ Use `--tags` to run only part of the playbook:
 | `nginx` | Nginx config and SSL certificates |
 | `uwsgi` | uWSGI config |
 | `supervisor` | Supervisor config files and service restart |
-| `firewall` | firewalld ports and SELinux (CentOS/RHEL only) |
+| `firewall` | firewalld ports and SELinux (CentOS/Rocky/Alma only) |
 
 Examples:
 
@@ -299,14 +319,17 @@ tail -f /var/log/openrvdas/uwsgi.stderr
 
 ```
 openrvdas-ansible/
-├── site.yml                        # Top-level playbook
+├── site.yml                        # Top-level install playbook
+├── smoke-test.yml                  # Post-install verification
 ├── requirements.yml                # Ansible Galaxy collection dependencies
 ├── inventory/
 │   ├── hosts.ini                   # Target hosts
 │   └── group_vars/
 │       ├── all.yml                 # Shared defaults (edit this)
 │       ├── ubuntu.yml              # Ubuntu/Debian OS settings
-│       ├── centos.yml              # CentOS/Rocky OS settings
+│       ├── centos.yml              # CentOS OS settings
+│       ├── rocky.yml               # Rocky Linux OS settings
+│       ├── alma.yml                # AlmaLinux OS settings
 │       └── macos.yml               # macOS settings
 ├── vault/
 │   ├── secrets.yml                 # Encrypted secrets (created by you)

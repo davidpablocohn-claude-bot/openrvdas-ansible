@@ -32,12 +32,12 @@
   community.crypto.openssl_csr:
     path: "{{ ssl_key_location | regex_replace('\\.key$', '.csr') }}"
     privatekey_path: "{{ ssl_key_location }}"
-    common_name: "{{ ansible_hostname }}"
+    common_name: "{{ ansible_facts['hostname'] }}"
     subject_alt_name:
-      - "DNS:{{ ansible_hostname }}"
+      - "DNS:{{ ansible_facts['hostname'] }}"
       - "DNS:localhost"
       - "IP:127.0.0.1"
-      - "IP:{{ ansible_default_ipv4.address | default('127.0.0.1') }}"
+      - "IP:{{ ansible_facts['default_ipv4']['address'] | default('127.0.0.1') }}"
   when: not have_ssl_certificate
 
 - name: Generate self-signed certificate (valid 10 years)

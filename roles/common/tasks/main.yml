@@ -5,6 +5,14 @@
   when: ansible_facts['os_family'] != 'Darwin'
   tags: [common, hostname]
 
+- name: Ensure sshd is running after hostname change
+  ansible.builtin.service:
+    name: "{{ 'ssh' if ansible_facts['os_family'] == 'Debian' else 'sshd' }}"
+    state: started
+    enabled: true
+  when: ansible_facts['os_family'] != 'Darwin'
+  tags: [common, hostname]
+
 - name: Create rvdas system user
   ansible.builtin.import_tasks: user.yml
   when: ansible_facts['os_family'] != 'Darwin'
