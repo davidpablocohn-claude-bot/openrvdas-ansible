@@ -16,6 +16,7 @@
     repo: ppa:deadsnakes/ppa
     state: present
     update_cache: true
+  when: use_deadsnakes | default(true)
 
 - name: Install system packages
   ansible.builtin.apt:

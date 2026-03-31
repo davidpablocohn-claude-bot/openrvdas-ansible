@@ -1,7 +1,7 @@
 # OpenRVDAS Ansible Playbook
 
 Ansible replacement for `utils/install_openrvdas.sh`. Installs and configures
-OpenRVDAS on Ubuntu/Debian, CentOS, Rocky Linux, AlmaLinux, or macOS.
+OpenRVDAS on Ubuntu, Debian, Raspberry Pi OS, CentOS, Rocky Linux, AlmaLinux, or macOS.
 
 ## Prerequisites
 
@@ -87,8 +87,9 @@ ansible-vault encrypt vault/secrets.yml
 ### 3. Add your host to the inventory
 
 Edit `inventory/hosts.ini`. The host must appear in **both** `[openrvdas]` and
-the appropriate OS group (`[ubuntu]`, `[centos]`, `[rocky]`, `[alma]`, or
-`[macos]`) so that the correct OS-specific variables are applied.
+the appropriate OS group (`[ubuntu]`, `[debian]`, `[raspbian]`, `[centos]`,
+`[rocky]`, `[alma]`, or `[macos]`) so that the correct OS-specific variables
+are applied.
 
 **Example — Ubuntu host over SSH as root:**
 ```ini
@@ -194,6 +195,7 @@ EOF
 |---|---|---|
 | Ubuntu | 20.04, 22.04, 24.04 | 3.13 (via deadsnakes PPA) |
 | Debian | 11, 12 | 3.13 (via deadsnakes PPA) |
+| Raspberry Pi OS | Bookworm (12) | 3.11 (system) |
 | CentOS | 8, 9 | 3.12 (from AppStream) |
 | Rocky Linux | 8, 9 | 3.12 (from AppStream) |
 | AlmaLinux | 8, 9 | 3.12 (from AppStream) |
@@ -326,7 +328,9 @@ openrvdas-ansible/
 │   ├── hosts.ini                   # Target hosts
 │   └── group_vars/
 │       ├── all.yml                 # Shared defaults (edit this)
-│       ├── ubuntu.yml              # Ubuntu/Debian OS settings
+│       ├── ubuntu.yml              # Ubuntu OS settings
+│       ├── debian.yml              # Debian OS settings
+│       ├── raspbian.yml            # Raspberry Pi OS settings
 │       ├── centos.yml              # CentOS OS settings
 │       ├── rocky.yml               # Rocky Linux OS settings
 │       ├── alma.yml                # AlmaLinux OS settings

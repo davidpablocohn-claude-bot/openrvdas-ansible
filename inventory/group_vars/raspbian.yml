@@ -1,6 +1,8 @@
 ---
-# Ubuntu / Debian / Raspbian OS-specific settings
+# Raspberry Pi OS (Raspbian) OS-specific settings
 # (ansible_os_family == 'Debian')
+# Minimum supported: Raspberry Pi OS Bookworm (based on Debian 12)
+# Uses system Python 3.11 — deadsnakes PPA does not publish ARM builds.
 
 # ── Supervisor ────────────────────────────────────────────────────────────────
 supervisor_service_name: supervisor
@@ -20,10 +22,10 @@ rvdas_groups:
   - tty
   - dialout
 
-# ── Python 3.13 via deadsnakes PPA ────────────────────────────────────────────
-python_version: "3.13"
-python_bin: /usr/bin/python3.13
-use_deadsnakes: true
+# ── Python 3.11 (system, no deadsnakes) ──────────────────────────────────────
+python_version: "3.11"
+python_bin: /usr/bin/python3.11
+use_deadsnakes: false
 
 system_packages:
   - git

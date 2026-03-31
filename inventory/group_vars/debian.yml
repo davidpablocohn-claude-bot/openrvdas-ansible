@@ -1,6 +1,7 @@
 ---
-# Ubuntu / Debian / Raspbian OS-specific settings
+# Debian OS-specific settings
 # (ansible_os_family == 'Debian')
+# Minimum supported: Debian 11 (Bullseye)
 
 # ── Supervisor ────────────────────────────────────────────────────────────────
 supervisor_service_name: supervisor

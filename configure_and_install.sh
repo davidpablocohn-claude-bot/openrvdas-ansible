@@ -134,11 +134,13 @@ is_ip_address() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
 # Map /etc/os-release ID value to our OS type names
 parse_os_id() {
     case "$(echo "$1" | tr '[:upper:]' '[:lower:]')" in
-        ubuntu|debian)      echo "ubuntu" ;;
-        centos|rhel)        echo "centos" ;;
-        rocky)              echo "rocky"  ;;
-        almalinux|alma)     echo "alma"   ;;
-        *)                  echo ""       ;;
+        ubuntu)             echo "ubuntu"   ;;
+        debian)             echo "debian"   ;;
+        raspbian|raspios)   echo "raspbian" ;;
+        centos|rhel)        echo "centos"   ;;
+        rocky)              echo "rocky"    ;;
+        almalinux|alma)     echo "alma"     ;;
+        *)                  echo ""         ;;
     esac
 }
 
@@ -159,7 +161,7 @@ detect_remote_info() {
         return 0
     fi
 
-    local ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10 -o BatchMode=yes"
+    local ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
     local output
     output=$(ssh $ssh_opts "${user}@${host}" \
         'echo "HOSTNAME=$(hostname)"; grep "^ID=" /etc/os-release 2>/dev/null || true' 2>/dev/null)
@@ -278,7 +280,7 @@ ask ANSIBLE_USER "SSH user on target" "${PREF_ANSIBLE_USER:-root}"
 
 # Detect hostname and OS from the target machine
 echo "  Connecting to ${TARGET_HOST} to detect system info..."
-detect_remote_info "$TARGET_HOST" "$ANSIBLE_USER"
+detect_remote_info "$TARGET_HOST" "$ANSIBLE_USER" || true
 
 # Suggest the detected hostname, or fall back to the target (if it's a name) or saved pref
 if [ -n "$DETECTED_HOSTNAME" ]; then
@@ -296,9 +298,9 @@ if [ -n "$DETECTED_OS" ]; then
     echo "  Detected OS: $OS_TYPE"
 else
     echo "  Could not detect OS type (SSH may not be available yet)."
-    VALID_OS_TYPES="ubuntu centos rocky alma macos"
+    VALID_OS_TYPES="ubuntu debian raspbian centos rocky alma macos"
     while true; do
-        ask OS_TYPE "OS type (ubuntu / centos / rocky / alma / macos)" "${PREF_OS_TYPE:-ubuntu}"
+        ask OS_TYPE "OS type (ubuntu / debian / raspbian / centos / rocky / alma / macos)" "${PREF_OS_TYPE:-ubuntu}"
         if echo "$VALID_OS_TYPES" | grep -qw "$OS_TYPE"; then
             break
         fi
