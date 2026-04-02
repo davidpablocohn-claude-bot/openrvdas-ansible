@@ -140,6 +140,7 @@ parse_os_id() {
         centos|rhel)        echo "centos"   ;;
         rocky)              echo "rocky"    ;;
         almalinux|alma)     echo "alma"     ;;
+        void)               echo "void"     ;;
         *)                  echo ""         ;;
     esac
 }
@@ -216,38 +217,53 @@ EOF
 
 # ── Update hosts.ini ──────────────────────────────────────────────────────────
 
+python_bin_for_os() {
+    case "$1" in
+        ubuntu|debian)          echo "/usr/bin/python3" ;;
+        raspbian)               echo "/usr/bin/python3.11" ;;
+        centos|rocky|alma)      echo "/usr/bin/python3.12" ;;
+        void)                   echo "auto_silent" ;;
+        macos)                  echo "/usr/bin/python3" ;;
+        *)                      echo "/usr/bin/python3" ;;
+    esac
+}
+
 update_hosts_ini() {
-    python3 - "$SCRIPT_DIR/inventory/hosts.ini" "$TARGET_HOST" "$ANSIBLE_USER" "$OS_TYPE" <<'PYEOF'
+    local python_bin
+    python_bin="$(python_bin_for_os "$OS_TYPE")"
+    python3 - "$SCRIPT_DIR/inventory/hosts.ini" "$TARGET_HOST" "$ANSIBLE_USER" "$OS_TYPE" "$python_bin" <<'PYEOF'
 import sys, re
 
-hosts_file, host, user, os_type = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+hosts_file, host, user, os_type, python_bin = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 
 with open(hosts_file) as f:
     content = f.read()
 
 if host in ('localhost', '127.0.0.1', '::1'):
-    host_entry = f"{host} ansible_connection=local ansible_python_interpreter=/usr/bin/python3"
+    host_entry = f"{host} ansible_connection=local ansible_python_interpreter={python_bin}"
 else:
-    host_entry = f"{host} ansible_user={user} ansible_python_interpreter=/usr/bin/python3"
+    host_entry = f"{host} ansible_user={user} ansible_python_interpreter={python_bin}"
 
 def ensure_host_in_section(text, section, entry):
-    """Add entry under [section] if not already present."""
+    """Add or update host entry under [section]."""
+    hostname = entry.split()[0]
     section_pattern = re.compile(rf'^\[{re.escape(section)}\]', re.MULTILINE)
     if not section_pattern.search(text):
         text = text.rstrip('\n') + f'\n\n[{section}]\n{entry}\n'
         return text
-    # Check if entry (by hostname) already appears after this section header
+    # Replace existing entry if hostname already appears in this section
     lines = text.splitlines(keepends=True)
     in_section = False
-    for line in lines:
+    for i, line in enumerate(lines):
         if re.match(rf'^\[{re.escape(section)}\]', line):
             in_section = True
             continue
         if in_section:
             if line.startswith('['):
                 break  # next section, host not found
-            if line.split()[0] == entry.split()[0] if line.strip() else False:
-                return text  # already there
+            if line.strip() and line.split()[0] == hostname:
+                lines[i] = entry + '\n'
+                return ''.join(lines)
     # Host not found in section — insert after section header
     text = section_pattern.sub(f'[{section}]\n{entry}', text, count=1)
     return text
@@ -298,9 +314,9 @@ if [ -n "$DETECTED_OS" ]; then
     echo "  Detected OS: $OS_TYPE"
 else
     echo "  Could not detect OS type (SSH may not be available yet)."
-    VALID_OS_TYPES="ubuntu debian raspbian centos rocky alma macos"
+    VALID_OS_TYPES="ubuntu debian raspbian centos rocky alma void macos"
     while true; do
-        ask OS_TYPE "OS type (ubuntu / debian / raspbian / centos / rocky / alma / macos)" "${PREF_OS_TYPE:-ubuntu}"
+        ask OS_TYPE "OS type (ubuntu / debian / raspbian / centos / rocky / alma / void / macos)" "${PREF_OS_TYPE:-ubuntu}"
         if echo "$VALID_OS_TYPES" | grep -qw "$OS_TYPE"; then
             break
         fi

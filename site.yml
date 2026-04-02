@@ -13,13 +13,23 @@
 
 - name: Install OpenRVDAS
   hosts: all
-  gather_facts: true
+  gather_facts: false
   become: true
 
   vars_files:
     - vault/secrets.yml
 
   pre_tasks:
+    - name: Bootstrap Python on Void Linux (no Python on fresh install)
+      ansible.builtin.raw: xbps-install -Sy python3
+      when: inventory_hostname in groups.get('void', [])
+      changed_when: false
+      tags: always
+
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: always
+
     - name: Set derived network variables
       ansible.builtin.set_fact:
         server_port: "{{ ssl_server_port if use_ssl else nonssl_server_port }}"

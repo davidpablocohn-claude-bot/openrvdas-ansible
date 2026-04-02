@@ -1,0 +1,45 @@
+---
+# Void Linux OS-specific settings
+# (ansible_os_family == 'Void')
+# Init system: runit (ansible.builtin.service auto-detects)
+# Package manager: xbps
+
+# ── Supervisor ────────────────────────────────────────────────────────────────
+supervisor_service_name: supervisord
+supervisor_conf_dir: /etc/supervisor/conf.d
+supervisor_conf_suffix: conf
+supervisor_sock: /var/run/supervisor.sock
+
+# ── Nginx ─────────────────────────────────────────────────────────────────────
+nginx_bin: /usr/sbin/nginx
+nginx_uwsgi_params_src: /etc/nginx/uwsgi_params
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+etc_home: /etc
+
+# ── User groups ───────────────────────────────────────────────────────────────
+rvdas_groups:
+  - tty
+  - wheel
+
+# ── Python ────────────────────────────────────────────────────────────────────
+python_version: "3"
+python_bin: /usr/bin/python3
+# Note: Void ships the latest Python (3.14 as of current release)
+
+system_packages:
+  - git
+  - nginx
+  - python3-pip
+  - wget
+  - gcc
+  - openssl-devel
+  - readline-devel
+  - libffi-devel
+  - sqlite-devel
+  - python3-cryptography
+  - python3-packaging
+
+python_packages:
+  - "python{{ python_version }}"
+  - "python{{ python_version }}-devel"

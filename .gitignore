@@ -7,4 +7,4 @@ vault/secrets.yml
 
 # Per-host config files contain no secrets but may contain site-specific paths
 # — comment out the next line if you want to commit them
-# inventory/host_vars/
+inventory/host_vars/

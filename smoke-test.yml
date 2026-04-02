@@ -9,11 +9,16 @@
 
 - name: OpenRVDAS Smoke Test
   hosts: all
-  gather_facts: true
+  gather_facts: false
   become: true
 
   vars_files:
     - vault/secrets.yml
+
+  pre_tasks:
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: always
 
   vars:
     http_scheme: "{{ 'https' if use_ssl else 'http' }}"

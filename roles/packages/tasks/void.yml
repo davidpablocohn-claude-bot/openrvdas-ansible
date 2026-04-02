@@ -1,0 +1,23 @@
+---
+# Void Linux package installation
+# Uses xbps-install directly for reliability
+
+- name: Sync xbps repository index and install system packages
+  ansible.builtin.shell:
+    cmd: "xbps-install -Sy {{ (system_packages + python_packages) | join(' ') }}"
+  become: true
+  register: xbps_result
+  changed_when: "'installed successfully' in xbps_result.stdout"
+
+- name: Install supervisor via pip (not in xbps repos)
+  ansible.builtin.command:
+    cmd: pip3 install --break-system-packages supervisor
+  become: true
+  changed_when: true
+
+- name: Disable system-managed nginx (will run under supervisord)
+  ansible.builtin.service:
+    name: nginx
+    enabled: false
+    state: stopped
+  failed_when: false

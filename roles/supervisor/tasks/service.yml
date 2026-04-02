@@ -1,4 +1,61 @@
 ---
+# ── Void Linux: create config and runit service for pip-installed supervisord ─
+- name: Create supervisor config and log directories (Void Linux)
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /etc/supervisor/conf.d
+    - /var/log/supervisor
+  when: ansible_facts['os_family'] == 'Void'
+  become: true
+
+- name: Create main supervisord.conf (Void Linux — pip install has none)
+  ansible.builtin.copy:
+    dest: /etc/supervisor/supervisord.conf
+    mode: "0644"
+    content: |
+      [supervisord]
+      logfile=/var/log/supervisor/supervisord.log
+      pidfile=/var/run/supervisord.pid
+      nodaemon=false
+
+      [unix_http_server]
+      file={{ supervisor_sock }}
+      chmod=0770
+      chown=nobody:{{ rvdas_group }}
+
+      [supervisorctl]
+      serverurl=unix://{{ supervisor_sock }}
+
+      [rpcinterface:supervisor]
+      supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+      [include]
+      files = {{ supervisor_conf_dir }}/*.{{ supervisor_conf_suffix }}
+  when: ansible_facts['os_family'] == 'Void'
+  become: true
+
+- name: Create runit service directory for supervisord (Void Linux)
+  ansible.builtin.file:
+    path: /etc/sv/supervisord
+    state: directory
+    mode: "0755"
+  when: ansible_facts['os_family'] == 'Void'
+  become: true
+
+- name: Create runit run script for supervisord (Void Linux)
+  ansible.builtin.copy:
+    dest: /etc/sv/supervisord/run
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      exec supervisord -n -c /etc/supervisor/supervisord.conf 2>&1
+  when: ansible_facts['os_family'] == 'Void'
+  become: true
+
+# ── Enable and start ──────────────────────────────────────────────────────────
 - name: Enable and start supervisor service
   ansible.builtin.service:
     name: "{{ supervisor_service_name }}"
