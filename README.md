@@ -208,6 +208,43 @@ EOF
 > - Add the host to the `[macos]` group in `hosts.ini`.
 > - The `rvdas_user` is set automatically to the connecting user; no new system user is created.
 
+## Updating OpenRVDAS
+
+Pull the latest code, update requirements, run migrations, and reload services:
+
+```bash
+ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+```
+
+To update to a specific branch:
+```bash
+ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass \
+  -e "openrvdas_branch=dev"
+```
+
+## Backup
+
+Creates a timestamped `.tar.gz` on the target host containing the Django database
+(as portable JSON), cruise/logger config files, and site-specific settings files:
+
+```bash
+ansible-playbook backup.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+```
+
+To also fetch the backup to `./backups/` on your local machine:
+```bash
+ansible-playbook backup.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass \
+  -e "fetch_backup=true"
+```
+
+## Status
+
+Quick health check across all hosts — services, disk, version, last log activity:
+
+```bash
+ansible-playbook status.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+```
+
 ## Smoke Test
 
 After installation, `configure_and_install.sh` will offer to run the smoke test
@@ -324,6 +361,9 @@ tail -f /var/log/openrvdas/uwsgi.stderr
 ```
 openrvdas-ansible/
 ├── site.yml                        # Top-level install playbook
+├── update.yml                      # Update OpenRVDAS code and restart services
+├── backup.yml                      # Backup database and config files
+├── status.yml                      # Health check across hosts
 ├── smoke-test.yml                  # Post-install verification
 ├── requirements.yml                # Ansible Galaxy collection dependencies
 ├── inventory/

@@ -1,0 +1,93 @@
+---
+# status.yml
+#
+# Quick health check across one or more OpenRVDAS hosts.
+# Shows service status, disk usage, OpenRVDAS version, and last log activity.
+#
+# Usage:
+#   ansible-playbook status.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+#   ansible-playbook status.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass --limit <host>
+
+- name: OpenRVDAS Status
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars_files:
+    - vault/secrets.yml
+
+  pre_tasks:
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: always
+
+  tasks:
+
+    # ── Supervisor / services ─────────────────────────────────────────────────
+
+    - name: Get supervisor process status
+      ansible.builtin.command: supervisorctl status
+      register: supervisor_status
+      changed_when: false
+      failed_when: false
+
+    # ── OpenRVDAS version ─────────────────────────────────────────────────────
+
+    - name: Get OpenRVDAS git version
+      ansible.builtin.command:
+        cmd: git log -1 --format="%h — %s (%ci)"
+        chdir: "{{ install_root }}/openrvdas"
+      register: git_version
+      changed_when: false
+      become_user: "{{ rvdas_user }}"
+      failed_when: false
+
+    - name: Get current git branch
+      ansible.builtin.command:
+        cmd: git rev-parse --abbrev-ref HEAD
+        chdir: "{{ install_root }}/openrvdas"
+      register: git_branch
+      changed_when: false
+      become_user: "{{ rvdas_user }}"
+      failed_when: false
+
+    # ── Disk usage ────────────────────────────────────────────────────────────
+
+    - name: Get disk usage on install root filesystem
+      ansible.builtin.shell: >
+        df -h {{ install_root }} | awk 'NR==2 {print $3 " used of " $2 " (" $5 ")"}'
+      register: disk_usage
+      changed_when: false
+
+    # ── Last log activity ─────────────────────────────────────────────────────
+
+    - name: Find most recently modified log file
+      ansible.builtin.shell: >
+        find /var/log/openrvdas -name "*.log" -o -name "*.stderr" 2>/dev/null |
+        xargs ls -lt 2>/dev/null | head -1 | awk '{print $NF, "(", $6, $7, $8, ")"}'
+      register: last_log
+      changed_when: false
+      failed_when: false
+
+    # ── Uptime ────────────────────────────────────────────────────────────────
+
+    - name: Get system uptime
+      ansible.builtin.command: uptime -p
+      register: system_uptime
+      changed_when: false
+      failed_when: false
+
+    # ── Summary output ────────────────────────────────────────────────────────
+
+    - name: "== STATUS: {{ inventory_hostname }} =="
+      ansible.builtin.debug:
+        msg:
+          - "Host:      {{ inventory_hostname }}"
+          - "Uptime:    {{ system_uptime.stdout | default('unavailable') }}"
+          - "Disk:      {{ disk_usage.stdout }}"
+          - "Branch:    {{ git_branch.stdout | default('unknown') }}"
+          - "Version:   {{ git_version.stdout | default('unknown') }}"
+          - "Last log:  {{ last_log.stdout | default('none found') }}"
+          - "---"
+          - "Services:"
+          - "{{ supervisor_status.stdout_lines | default(['supervisord not running']) }}"

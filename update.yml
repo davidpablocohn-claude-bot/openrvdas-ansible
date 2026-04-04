@@ -1,0 +1,72 @@
+---
+# update.yml
+#
+# Pull the latest OpenRVDAS code, update Python requirements, apply
+# settings, run migrations, and reload services — without a full reinstall.
+#
+# Usage:
+#   ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+#   ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass --limit <host>
+#
+# To update to a specific branch:
+#   ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass -e "openrvdas_branch=dev"
+
+- name: Update OpenRVDAS
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars_files:
+    - vault/secrets.yml
+
+  pre_tasks:
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: always
+
+    - name: Set derived network variables
+      ansible.builtin.set_fact:
+        server_port: "{{ ssl_server_port if use_ssl else nonssl_server_port }}"
+        websocket_protocol: "{{ 'wss' if use_ssl else 'ws' }}"
+      tags: always
+
+    - name: Show current OpenRVDAS version before update
+      ansible.builtin.command:
+        cmd: git log -1 --format="%h %s (%ci)"
+        chdir: "{{ install_root }}/openrvdas"
+      register: pre_update_version
+      changed_when: false
+      become_user: "{{ rvdas_user }}"
+      tags: always
+
+    - name: Display pre-update version
+      ansible.builtin.debug:
+        msg: "Before: {{ pre_update_version.stdout }}"
+      tags: always
+
+  roles:
+    - role: openrvdas
+      tags: [openrvdas]
+
+  post_tasks:
+    - name: Reload supervisor to pick up any config changes
+      ansible.builtin.shell:
+        cmd: supervisorctl reread && supervisorctl update
+      become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+      changed_when: false
+      failed_when: false
+      tags: always
+
+    - name: Show current OpenRVDAS version after update
+      ansible.builtin.command:
+        cmd: git log -1 --format="%h %s (%ci)"
+        chdir: "{{ install_root }}/openrvdas"
+      register: post_update_version
+      changed_when: false
+      become_user: "{{ rvdas_user }}"
+      tags: always
+
+    - name: Display post-update version
+      ansible.builtin.debug:
+        msg: "After:  {{ post_update_version.stdout }}"
+      tags: always

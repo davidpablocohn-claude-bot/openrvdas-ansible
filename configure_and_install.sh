@@ -164,10 +164,13 @@ detect_remote_info() {
 
     local ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
     local output
-    output=$(ssh $ssh_opts "${user}@${host}" \
-        'echo "HOSTNAME=$(hostname)"; grep "^ID=" /etc/os-release 2>/dev/null || true' 2>/dev/null)
-
-    [ $? -ne 0 ] && return 1
+    if [ "${USE_SSH_PASSWORD:-no}" = "yes" ] && command -v sshpass &>/dev/null && [ -n "${ANSIBLE_SSH_PASSWORD:-}" ]; then
+        output=$(SSHPASS="$ANSIBLE_SSH_PASSWORD" sshpass -e ssh $ssh_opts "${user}@${host}" \
+            'echo "HOSTNAME=$(hostname)"; grep "^ID=" /etc/os-release 2>/dev/null || true' 2>/dev/null) || return 1
+    else
+        output=$(ssh $ssh_opts "${user}@${host}" \
+            'echo "HOSTNAME=$(hostname)"; grep "^ID=" /etc/os-release 2>/dev/null || true' 2>/dev/null) || return 1
+    fi
 
     DETECTED_HOSTNAME=$(echo "$output" | grep '^HOSTNAME=' | cut -d= -f2)
     local raw_id
@@ -211,6 +214,7 @@ PREF_SUPERVISORD_WEBINTERFACE='${SUPERVISORD_WEBINTERFACE}'
 PREF_SUPERVISORD_WEBINTERFACE_AUTH='${SUPERVISORD_WEBINTERFACE_AUTH}'
 PREF_SUPERVISORD_WEBINTERFACE_PORT='${SUPERVISORD_WEBINTERFACE_PORT}'
 PREF_SUPERVISORD_WEBINTERFACE_USER='${SUPERVISORD_WEBINTERFACE_USER}'
+PREF_USE_SSH_PASSWORD='${USE_SSH_PASSWORD}'
 EOF
     chmod 600 "$PREFS_FILE"
 }
@@ -294,17 +298,69 @@ echo "  (Use 'localhost' to install on this machine)"
 ask TARGET_HOST "Hostname or IP of target" "${PREF_TARGET_HOST:-}"
 ask ANSIBLE_USER "SSH user on target" "${PREF_ANSIBLE_USER:-root}"
 
+# Verify SSH connectivity before proceeding — try key auth first, fall back to password
+USE_SSH_PASSWORD="no"
+ANSIBLE_SSH_PASSWORD=""
+
+if [ "$TARGET_HOST" != "localhost" ] && [ "$TARGET_HOST" != "127.0.0.1" ] && [ "$TARGET_HOST" != "::1" ]; then
+    echo "  Checking SSH connectivity to ${ANSIBLE_USER}@${TARGET_HOST}..."
+    ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+    while true; do
+        # Always try key auth first
+        SSH_OK=$(ssh $ssh_opts -o BatchMode=yes "${ANSIBLE_USER}@${TARGET_HOST}" true 2>/dev/null && echo yes || echo no)
+        if [ "$SSH_OK" = "yes" ]; then
+            echo "  SSH connection successful (key authentication)."
+            USE_SSH_PASSWORD="no"
+            break
+        fi
+
+        # Key auth failed — offer password fallback
+        echo ""
+        echo "  SSH key authentication failed for ${ANSIBLE_USER}@${TARGET_HOST}."
+        ask_yn TRY_PASSWORD "Try password authentication?" "${PREF_USE_SSH_PASSWORD:-no}"
+        if [ "$TRY_PASSWORD" = "yes" ]; then
+            read -rsp "  SSH password: " ANSIBLE_SSH_PASSWORD; echo
+            if command -v sshpass &>/dev/null; then
+                SSH_OK=$(SSHPASS="$ANSIBLE_SSH_PASSWORD" sshpass -e ssh $ssh_opts "${ANSIBLE_USER}@${TARGET_HOST}" true 2>/dev/null && echo yes || echo no)
+            else
+                echo "  (sshpass not found — skipping password verification; Ansible will use the password directly)"
+                SSH_OK="yes"
+            fi
+            if [ "$SSH_OK" = "yes" ]; then
+                echo "  SSH connection successful (password authentication)."
+                USE_SSH_PASSWORD="yes"
+                break
+            else
+                echo "  Password authentication also failed."
+                ANSIBLE_SSH_PASSWORD=""
+            fi
+        fi
+
+        ask_yn RETRY_SSH "Retry with different credentials?" "yes"
+        if [ "$RETRY_SSH" = "yes" ]; then
+            ask ANSIBLE_USER "SSH user on target" "$ANSIBLE_USER"
+        else
+            echo "  Aborting."
+            exit 1
+        fi
+    done
+fi
+
 # Detect hostname and OS from the target machine
 echo "  Connecting to ${TARGET_HOST} to detect system info..."
 detect_remote_info "$TARGET_HOST" "$ANSIBLE_USER" || true
 
-# Suggest the detected hostname, or fall back to the target (if it's a name) or saved pref
+# Suggest the detected hostname, or fall back sensibly.
+# Only use saved preference if we're re-running against the same host.
+SAME_HOST="$( [ "$TARGET_HOST" = "${PREF_TARGET_HOST:-}" ] && echo yes || echo no )"
 if [ -n "$DETECTED_HOSTNAME" ]; then
     DEFAULT_HOSTNAME="$DETECTED_HOSTNAME"
 elif is_ip_address "$TARGET_HOST"; then
-    DEFAULT_HOSTNAME="${PREF_RVDAS_HOSTNAME:-}"
+    # IP, detection failed: use saved pref only if same host, else blank
+    DEFAULT_HOSTNAME="$( [ "$SAME_HOST" = yes ] && echo "${PREF_RVDAS_HOSTNAME:-}" || echo "" )"
 else
-    DEFAULT_HOSTNAME="${PREF_RVDAS_HOSTNAME:-${TARGET_HOST}}"
+    # Hostname given, detection failed: use saved pref if same host, else use the hostname itself
+    DEFAULT_HOSTNAME="$( [ "$SAME_HOST" = yes ] && echo "${PREF_RVDAS_HOSTNAME:-$TARGET_HOST}" || echo "$TARGET_HOST" )"
 fi
 ask RVDAS_HOSTNAME "Hostname to set on target" "$DEFAULT_HOSTNAME"
 
@@ -316,7 +372,8 @@ else
     echo "  Could not detect OS type (SSH may not be available yet)."
     VALID_OS_TYPES="ubuntu debian raspbian centos rocky alma void macos"
     while true; do
-        ask OS_TYPE "OS type (ubuntu / debian / raspbian / centos / rocky / alma / void / macos)" "${PREF_OS_TYPE:-ubuntu}"
+        DEFAULT_OS="$( [ "$SAME_HOST" = yes ] && echo "${PREF_OS_TYPE:-ubuntu}" || echo "ubuntu" )"
+        ask OS_TYPE "OS type (ubuntu / debian / raspbian / centos / rocky / alma / void / macos)" "$DEFAULT_OS"
         if echo "$VALID_OS_TYPES" | grep -qw "$OS_TYPE"; then
             break
         fi
@@ -500,7 +557,9 @@ echo "  Wrote $HOST_VARS_FILE"
 
 # ── Write and encrypt vault/secrets.yml ───────────────────────────────────────
 SECRETS_TMP="$(mktemp)"
-trap "rm -f '$SECRETS_TMP'" EXIT
+SSH_VARS_TMP=""
+cleanup_tmps() { rm -f "$SECRETS_TMP" ${SSH_VARS_TMP:+"$SSH_VARS_TMP"}; }
+trap cleanup_tmps EXIT
 
 cat > "$SECRETS_TMP" <<EOF
 ---
@@ -520,6 +579,15 @@ save_prefs
 update_hosts_ini
 echo "  Preferences saved to $PREFS_FILE"
 
+# ── Build SSH password extra-vars file (if using password auth) ───────────────
+ANSIBLE_SSH_EXTRA_ARGS=()
+if [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ]; then
+    SSH_VARS_TMP="$(mktemp)"
+    chmod 600 "$SSH_VARS_TMP"
+    printf 'ansible_ssh_pass: %s\n' "$ANSIBLE_SSH_PASSWORD" > "$SSH_VARS_TMP"
+    ANSIBLE_SSH_EXTRA_ARGS=("-e" "@${SSH_VARS_TMP}")
+fi
+
 # ── Run playbook ──────────────────────────────────────────────────────────────
 section "Running Ansible Playbook"
 echo ""
@@ -528,7 +596,8 @@ cd "$SCRIPT_DIR"
 ansible-playbook site.yml \
     -i inventory/hosts.ini \
     --vault-password-file "$VAULT_PASS_FILE" \
-    --limit "$TARGET_HOST"
+    --limit "$TARGET_HOST" \
+    "${ANSIBLE_SSH_EXTRA_ARGS[@]}"
 
 # ── Smoke test ────────────────────────────────────────────────────────────────
 echo ""
@@ -539,5 +608,6 @@ if [ "$RUN_SMOKE_TEST" = "yes" ]; then
     ansible-playbook smoke-test.yml \
         -i inventory/hosts.ini \
         --vault-password-file "$VAULT_PASS_FILE" \
-        --limit "$TARGET_HOST"
+        --limit "$TARGET_HOST" \
+        "${ANSIBLE_SSH_EXTRA_ARGS[@]}"
 fi

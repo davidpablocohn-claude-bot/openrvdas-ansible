@@ -1,0 +1,149 @@
+---
+# backup.yml
+#
+# Creates a timestamped backup of OpenRVDAS data on the target host and
+# optionally fetches it to the control machine.
+#
+# What is backed up:
+#   - Django database (via dumpdata — portable JSON)
+#   - Cruise configuration files (*.json in install_root/openrvdas/)
+#   - Logger configuration files
+#   - settings.py files (contain site-specific config, not in git)
+#
+# Usage:
+#   ansible-playbook backup.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+#
+# To also fetch the backup to your local machine (./backups/):
+#   ansible-playbook backup.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass -e "fetch_backup=true"
+
+- name: Backup OpenRVDAS
+  hosts: all
+  gather_facts: false
+  become: true
+
+  vars_files:
+    - vault/secrets.yml
+
+  vars:
+    backup_timestamp: "{{ lookup('pipe', 'date +%Y%m%d_%H%M%S') }}"
+    backup_name: "openrvdas_backup_{{ inventory_hostname }}_{{ backup_timestamp }}"
+    backup_staging_dir: "/tmp/{{ backup_name }}"
+    backup_archive: "/tmp/{{ backup_name }}.tar.gz"
+    fetch_backup: false
+
+  pre_tasks:
+    - name: Gather facts
+      ansible.builtin.setup:
+      tags: always
+
+  tasks:
+
+    # ── Stage backup directory ────────────────────────────────────────────────
+
+    - name: Create backup staging directory
+      ansible.builtin.file:
+        path: "{{ backup_staging_dir }}"
+        state: directory
+        mode: "0700"
+
+    # ── Django database ───────────────────────────────────────────────────────
+
+    - name: Export Django database via dumpdata
+      ansible.builtin.command:
+        cmd: >
+          {{ install_root }}/openrvdas/venv/bin/python manage.py dumpdata
+          --natural-foreign --natural-primary --indent 2
+          -o {{ backup_staging_dir }}/django_db.json
+        chdir: "{{ install_root }}/openrvdas"
+      become_user: "{{ rvdas_user }}"
+      changed_when: false
+
+    # ── Settings files (site-specific, not in git) ────────────────────────────
+
+    - name: Back up settings files
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ backup_staging_dir }}/"
+        remote_src: true
+        mode: preserve
+      loop:
+        - "{{ install_root }}/openrvdas/django_gui/settings.py"
+        - "{{ install_root }}/openrvdas/database/settings.py"
+      failed_when: false
+
+    # ── Cruise and logger configuration files ─────────────────────────────────
+
+    - name: Find cruise configuration files
+      ansible.builtin.find:
+        paths: "{{ install_root }}/openrvdas"
+        patterns:
+          - "*.json"
+          - "*.yaml"
+          - "*.yml"
+        recurse: true
+        excludes:
+          - "*.pyc"
+        file_type: file
+      register: config_files
+
+    - name: Create config subdirectory in backup
+      ansible.builtin.file:
+        path: "{{ backup_staging_dir }}/configs"
+        state: directory
+        mode: "0755"
+
+    - name: Copy cruise and logger config files
+      ansible.builtin.copy:
+        src: "{{ item.path }}"
+        dest: "{{ backup_staging_dir }}/configs/{{ item.path | relpath(install_root + '/openrvdas') | replace('/', '_') }}"
+        remote_src: true
+        mode: preserve
+      loop: "{{ config_files.files }}"
+      loop_control:
+        label: "{{ item.path | basename }}"
+
+    # ── Git version info ──────────────────────────────────────────────────────
+
+    - name: Record current git version
+      ansible.builtin.command:
+        cmd: git log -1 --format="%H%n%s%n%ci%nbranch: $(git rev-parse --abbrev-ref HEAD)"
+        chdir: "{{ install_root }}/openrvdas"
+      register: git_version
+      changed_when: false
+      become_user: "{{ rvdas_user }}"
+      failed_when: false
+
+    - name: Write version info to backup
+      ansible.builtin.copy:
+        dest: "{{ backup_staging_dir }}/version.txt"
+        content: |
+          Host: {{ inventory_hostname }}
+          Date: {{ backup_timestamp }}
+          {{ git_version.stdout | default('git version unavailable') }}
+
+    # ── Archive ───────────────────────────────────────────────────────────────
+
+    - name: Create backup archive
+      ansible.builtin.archive:
+        path: "{{ backup_staging_dir }}"
+        dest: "{{ backup_archive }}"
+        format: gz
+      register: archive_result
+
+    - name: Clean up staging directory
+      ansible.builtin.file:
+        path: "{{ backup_staging_dir }}"
+        state: absent
+
+    - name: Show backup location on target host
+      ansible.builtin.debug:
+        msg: "Backup created: {{ backup_archive }} ({{ (archive_result.size / 1024 / 1024) | round(2) }} MB)"
+
+    # ── Fetch to control machine (optional) ───────────────────────────────────
+
+    - name: Fetch backup to control machine (./backups/)
+      ansible.builtin.fetch:
+        src: "{{ backup_archive }}"
+        dest: "backups/"
+        flat: false
+      when: fetch_backup | bool
