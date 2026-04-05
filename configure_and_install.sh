@@ -223,7 +223,7 @@ EOF
 
 python_bin_for_os() {
     case "$1" in
-        ubuntu|debian)          echo "/usr/bin/python3" ;;
+        ubuntu|debian)          echo "/usr/bin/python3.9" ;;
         raspbian)               echo "/usr/bin/python3.11" ;;
         centos|rocky|alma)      echo "/usr/bin/python3.12" ;;
         void)                   echo "auto_silent" ;;
@@ -301,6 +301,7 @@ ask ANSIBLE_USER "SSH user on target" "${PREF_ANSIBLE_USER:-root}"
 # Verify SSH connectivity before proceeding — try key auth first, fall back to password
 USE_SSH_PASSWORD="no"
 ANSIBLE_SSH_PASSWORD=""
+ANSIBLE_SSH_EXTRA_ARGS=()
 
 if [ "$TARGET_HOST" != "localhost" ] && [ "$TARGET_HOST" != "127.0.0.1" ] && [ "$TARGET_HOST" != "::1" ]; then
     echo "  Checking SSH connectivity to ${ANSIBLE_USER}@${TARGET_HOST}..."
@@ -344,6 +345,30 @@ if [ "$TARGET_HOST" != "localhost" ] && [ "$TARGET_HOST" != "127.0.0.1" ] && [ "
             exit 1
         fi
     done
+fi
+
+# Check if become (sudo) password is needed
+ANSIBLE_BECOME_PASS=""
+if [ "$ANSIBLE_USER" != "root" ]; then
+    echo "  Checking sudo access for ${ANSIBLE_USER}..."
+    SUDO_OK=no
+    if [ "$TARGET_HOST" = "localhost" ] || [ "$TARGET_HOST" = "127.0.0.1" ] || [ "$TARGET_HOST" = "::1" ]; then
+        sudo -n true 2>/dev/null && SUDO_OK=yes || true
+    else
+        ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+        if [ "$USE_SSH_PASSWORD" = "yes" ] && command -v sshpass &>/dev/null; then
+            SSHPASS="$ANSIBLE_SSH_PASSWORD" sshpass -e ssh $ssh_opts \
+                "${ANSIBLE_USER}@${TARGET_HOST}" "sudo -n true" 2>/dev/null && SUDO_OK=yes || true
+        else
+            ssh $ssh_opts "${ANSIBLE_USER}@${TARGET_HOST}" "sudo -n true" 2>/dev/null && SUDO_OK=yes || true
+        fi
+    fi
+    if [ "$SUDO_OK" = "no" ]; then
+        echo "  Passwordless sudo not available — a sudo password is required."
+        read -rsp "  Sudo (become) password: " ANSIBLE_BECOME_PASS; echo
+    else
+        echo "  Passwordless sudo available."
+    fi
 fi
 
 # Detect hostname and OS from the target machine
@@ -557,8 +582,8 @@ echo "  Wrote $HOST_VARS_FILE"
 
 # ── Write and encrypt vault/secrets.yml ───────────────────────────────────────
 SECRETS_TMP="$(mktemp)"
-SSH_VARS_TMP=""
-cleanup_tmps() { rm -f "$SECRETS_TMP" ${SSH_VARS_TMP:+"$SSH_VARS_TMP"}; }
+EXTRA_VARS_TMP=""
+cleanup_tmps() { rm -f "$SECRETS_TMP" ${EXTRA_VARS_TMP:+"$EXTRA_VARS_TMP"}; }
 trap cleanup_tmps EXIT
 
 cat > "$SECRETS_TMP" <<EOF
@@ -579,13 +604,16 @@ save_prefs
 update_hosts_ini
 echo "  Preferences saved to $PREFS_FILE"
 
-# ── Build SSH password extra-vars file (if using password auth) ───────────────
-ANSIBLE_SSH_EXTRA_ARGS=()
-if [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ]; then
-    SSH_VARS_TMP="$(mktemp)"
-    chmod 600 "$SSH_VARS_TMP"
-    printf 'ansible_ssh_pass: %s\n' "$ANSIBLE_SSH_PASSWORD" > "$SSH_VARS_TMP"
-    ANSIBLE_SSH_EXTRA_ARGS=("-e" "@${SSH_VARS_TMP}")
+# ── Build extra-vars file for sensitive connection vars ───────────────────────
+ANSIBLE_EXTRA_ARGS=()
+if { [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ]; } || [ -n "$ANSIBLE_BECOME_PASS" ]; then
+    EXTRA_VARS_TMP="$(mktemp)"
+    chmod 600 "$EXTRA_VARS_TMP"
+    [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ] && \
+        printf 'ansible_ssh_pass: %s\n' "$ANSIBLE_SSH_PASSWORD" >> "$EXTRA_VARS_TMP"
+    [ -n "$ANSIBLE_BECOME_PASS" ] && \
+        printf 'ansible_become_pass: %s\n' "$ANSIBLE_BECOME_PASS" >> "$EXTRA_VARS_TMP"
+    ANSIBLE_EXTRA_ARGS=("-e" "@${EXTRA_VARS_TMP}")
 fi
 
 # ── Run playbook ──────────────────────────────────────────────────────────────
@@ -597,7 +625,7 @@ ansible-playbook site.yml \
     -i inventory/hosts.ini \
     --vault-password-file "$VAULT_PASS_FILE" \
     --limit "$TARGET_HOST" \
-    "${ANSIBLE_SSH_EXTRA_ARGS[@]}"
+    ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
 
 # ── Smoke test ────────────────────────────────────────────────────────────────
 echo ""
@@ -609,5 +637,5 @@ if [ "$RUN_SMOKE_TEST" = "yes" ]; then
         -i inventory/hosts.ini \
         --vault-password-file "$VAULT_PASS_FILE" \
         --limit "$TARGET_HOST" \
-        "${ANSIBLE_SSH_EXTRA_ARGS[@]}"
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
 fi
