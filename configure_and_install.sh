@@ -28,22 +28,29 @@ install_ansible() {
             fi
             ;;
         Linux)
-            # Ensure pip3 is available first
-            if ! command -v pip3 &>/dev/null; then
-                if command -v apt-get &>/dev/null; then
-                    echo "  Installing python3-pip..."
-                    sudo apt-get update -qq && sudo apt-get install -y python3-pip
-                elif command -v dnf &>/dev/null; then
-                    echo "  Installing python3-pip..."
-                    sudo dnf install -y python3-pip
-                else
-                    echo "  ERROR: Cannot find a package manager to install pip3." >&2
-                    echo "  Please install Ansible manually: https://docs.ansible.com/ansible/latest/installation_guide/" >&2
-                    exit 1
-                fi
+            # On Debian/Ubuntu, prefer apt — avoids PEP 668 externally-managed-environment errors
+            if command -v apt-get &>/dev/null; then
+                echo "  Installing Ansible via apt..."
+                sudo apt-get update -qq && sudo apt-get install -y ansible && return
+                echo "  apt install failed, falling back to pip3..."
             fi
-            pip3 install --user ansible
-            # pip --user installs into ~/.local/bin — ensure it's on PATH
+            # On RHEL/CentOS/Rocky, use dnf/pip
+            if command -v dnf &>/dev/null; then
+                echo "  Installing Ansible via pip3..."
+                if ! command -v pip3 &>/dev/null; then
+                    sudo dnf install -y python3-pip
+                fi
+                pip3 install --user ansible || pip3 install --user --break-system-packages ansible
+                export PATH="$HOME/.local/bin:$PATH"
+                return
+            fi
+            # Generic Linux fallback
+            if ! command -v pip3 &>/dev/null; then
+                echo "  ERROR: Cannot find apt-get, dnf, or pip3 to install Ansible." >&2
+                echo "  Please install Ansible manually: https://docs.ansible.com/ansible/latest/installation_guide/" >&2
+                exit 1
+            fi
+            pip3 install --user ansible || pip3 install --user --break-system-packages ansible
             export PATH="$HOME/.local/bin:$PATH"
             ;;
         *)
