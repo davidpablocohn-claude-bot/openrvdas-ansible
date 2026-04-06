@@ -18,6 +18,19 @@
   when: ansible_facts['os_family'] != 'Darwin'
   tags: [common, user]
 
+- name: Detect primary group on macOS (primary group is not the username)
+  ansible.builtin.command: id -gn
+  register: macos_primary_group
+  changed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags: [common, directories]
+
+- name: Set rvdas_group to user's actual primary group on macOS
+  ansible.builtin.set_fact:
+    rvdas_group: "{{ macos_primary_group.stdout }}"
+  when: ansible_facts['os_family'] == 'Darwin'
+  tags: [common, directories]
+
 - name: Create required directories
   ansible.builtin.import_tasks: directories.yml
   tags: [common, directories]
