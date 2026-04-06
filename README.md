@@ -4,140 +4,86 @@ Ansible replacement for `utils/install_openrvdas.sh`. Installs and configures
 OpenRVDAS on Ubuntu, Debian, Raspberry Pi OS, CentOS, Rocky Linux, AlmaLinux,
 Void Linux, or macOS.
 
-## Prerequisites
-
-- SSH access to the target host(s)
-- Python 3 and pip3 on your local machine (used to install Ansible if needed)
-- The target host is reachable and Python 3 is available on it
-
-Ansible itself does **not** need to be pre-installed — `configure_and_install.sh`
-will detect and install it automatically.
-
-## Using This as a Standalone Repo
-
-This directory is fully self-contained and can be used as its own repository,
-independent of the main OpenRVDAS codebase. The playbook clones OpenRVDAS
-itself during installation.
+## Quick Start
 
 ```bash
-git clone https://github.com/your-org/openrvdas-ansible
+git clone https://github.com/davidpablocohn-claude-bot/openrvdas-ansible
 cd openrvdas-ansible
 ./configure_and_install.sh
 ```
 
-## Interactive Installer
+That's it. The script handles everything else automatically.
 
-`configure_and_install.sh` is the recommended entry point. It:
+## What `configure_and_install.sh` Does
 
-1. Checks for Ansible and **installs it automatically** if not present
-   (via Homebrew on macOS, pip3 on Linux)
-2. Installs required Ansible collections
-3. Prompts for all configuration values, with previous answers shown as defaults
-4. Writes `inventory/host_vars/<host>.yml` with non-secret config
-5. Creates and encrypts `vault/secrets.yml`
-6. Updates `hosts.ini`
-7. Runs `ansible-playbook`
+1. **Installs Ansible** if not already present (via Homebrew on macOS, `apt` on
+   Debian/Ubuntu, `pip3` on other Linux)
+2. **Installs required Ansible collections**
+3. **Tests SSH connectivity** to the target host — tries key authentication
+   first, then offers password authentication if keys aren't set up
+4. **Detects the sudo password requirement** — if the connecting user is not
+   root and passwordless sudo isn't configured, prompts once and passes it
+   securely to Ansible
+5. **Detects the target OS and hostname** automatically over SSH (or from the
+   local system for `localhost` installs)
+6. **Prompts for all configuration values**, showing previous answers as
+   defaults so re-runs are quick
+7. **Writes `inventory/host_vars/<host>.yml`** with non-secret config
+8. **Encrypts `vault/secrets.yml`** with your passwords
+9. **Updates `inventory/hosts.ini`**
+10. **Runs `ansible-playbook site.yml`**
+11. **Offers to run the smoke test** to verify the installation
+
+Re-running the script on the same host is safe — all values from the previous
+run are shown as defaults.
+
+## Prerequisites
+
+- SSH access to the target host (or use `localhost` to install on the current
+  machine)
+- Python 3 on your local machine
+- The target host is reachable and has a supported OS
+
+Ansible itself does **not** need to be pre-installed — `configure_and_install.sh`
+will detect and install it automatically.
+
+## Installing on localhost
+
+To install OpenRVDAS on the machine you are currently sitting at:
 
 ```bash
 ./configure_and_install.sh
 ```
 
-The vault password is saved to `vault/.vault_pass` (mode 600, git-ignored) so
-subsequent runs don't require re-entering it:
+When prompted for the target host, enter `localhost`. The script will detect
+your OS automatically. If your user account requires a sudo password, the
+script will prompt for it.
 
-```bash
-ansible-playbook site.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
-```
+## OS Support
+
+| OS | Version | Notes |
+|---|---|---|
+| Ubuntu | 20.04, 22.04, 24.04 | Python 3.13 via deadsnakes PPA |
+| Debian | 11, 12 | Python 3.13 via deadsnakes PPA |
+| Raspberry Pi OS | Bookworm (12) | Python 3.11 (system) |
+| Void Linux | current | Python 3.x (xbps), supervisor via pip |
+| CentOS | 8, 9 | Python 3.12 from AppStream |
+| Rocky Linux | 8, 9 | Python 3.12 from AppStream |
+| AlmaLinux | 8, 9 | Python 3.12 from AppStream |
+| macOS | 12+ (Intel & Apple Silicon) | Python 3.13 via Homebrew |
+
+> **macOS notes:**
+> - Set `install_root` to a user-writable path (e.g. `/usr/local`) — `/opt` requires root.
+> - Add the host to the `[macos]` group in `hosts.ini`.
+> - The `rvdas_user` is set to the connecting user; no new system user is created.
 
 ---
 
-## Quick Start (manual)
-
-### 1. Install Ansible and required collections
-
-```bash
-# macOS
-brew install ansible
-
-# Ubuntu/Debian
-pip3 install --user ansible
-
-# Then install collections
-ansible-galaxy collection install -r requirements.yml
-```
-
-### 2. Set up your secrets file
-
-```bash
-cp vault/secrets.yml.example vault/secrets.yml
-```
-
-Edit `vault/secrets.yml` and set real values for:
-
-| Variable | Description |
-|---|---|
-| `rvdas_database_password` | Password for the Django superuser and database |
-| `supervisord_webinterface_pass` | Password for the supervisord web UI (only used if `supervisord_webinterface_auth: true`) |
-
-Then encrypt it:
-
-```bash
-ansible-vault encrypt vault/secrets.yml
-```
-
-### 3. Add your host to the inventory
-
-Edit `inventory/hosts.ini`. The host must appear in **both** `[openrvdas]` and
-the appropriate OS group (`[ubuntu]`, `[debian]`, `[raspbian]`, `[centos]`,
-`[rocky]`, `[alma]`, `[void]`, or `[macos]`) so that the correct OS-specific
-variables are applied.
-
-**Example — Ubuntu host over SSH as root:**
-```ini
-[openrvdas]
-my-vessel ansible_host=192.168.1.10 ansible_user=root ansible_python_interpreter=/usr/bin/python3
-
-[ubuntu]
-my-vessel
-```
-
-**Example — local install:**
-```ini
-[openrvdas]
-localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
-
-[ubuntu]
-localhost
-```
-
-### 4. Verify connectivity
-
-```bash
-ansible openrvdas -i inventory/hosts.ini -m ping
-```
-
-> **Host key verification:** `ansible.cfg` sets `host_key_checking = False`, so
-> new hosts are accepted automatically without needing their keys pre-added to
-> `~/.ssh/known_hosts`. If you prefer strict host key checking, remove that
-> setting and run `ssh-keyscan <host> >> ~/.ssh/known_hosts` before the first
-> connection.
-
-### 5. Run the playbook
-
-```bash
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass
-```
-
-If the connecting user needs a sudo password (not needed when connecting as root):
-
-```bash
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass --ask-become-pass
-```
-
 ## Configuration
 
-All non-secret configuration lives in `inventory/group_vars/all.yml`.
-Edit it before running the playbook, or override any variable at runtime with `-e`.
+All non-secret configuration lives in `inventory/group_vars/all.yml`. The
+interactive installer writes per-host overrides to
+`inventory/host_vars/<host>.yml`.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -163,122 +109,22 @@ Edit it before running the playbook, or override any variable at runtime with `-
 | `supervisord_webinterface_auth` | `false` | Require login for supervisord web interface |
 | `supervisord_webinterface_port` | `9001` | Port for supervisord web interface |
 
-### Runtime overrides
+---
 
-Any variable can be overridden on the command line with `-e`:
+## Playbooks
 
-```bash
-# Install from the dev branch with SSL enabled
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass \
-  -e "openrvdas_branch=dev use_ssl=true"
+### `site.yml` — Install
 
-# Disable the web GUI
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass \
-  -e "install_gui=false"
-```
-
-### Per-host overrides
-
-To set variables for a specific host only, create a file in `inventory/host_vars/`:
+Full installation. Normally run via `configure_and_install.sh`, but can also
+be invoked directly after configuration has been done once:
 
 ```bash
-mkdir -p inventory/host_vars
-cat > inventory/host_vars/my-vessel.yml <<EOF
-openrvdas_branch: dev
-use_ssl: true
-install_simulate_nbp: false
-EOF
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass
 ```
 
-## OS Support
-
-| OS | Version | Python |
-|---|---|---|
-| Ubuntu | 20.04, 22.04, 24.04 | 3.13 (via deadsnakes PPA) |
-| Debian | 11, 12 | 3.13 (via deadsnakes PPA) |
-| Raspberry Pi OS | Bookworm (12) | 3.11 (system) |
-| Void Linux | current | 3.12 (xbps) |
-| CentOS | 8, 9 | 3.12 (from AppStream) |
-| Rocky Linux | 8, 9 | 3.12 (from AppStream) |
-| AlmaLinux | 8, 9 | 3.12 (from AppStream) |
-| macOS | 12+ (Intel & Apple Silicon) | 3.13 (via Homebrew) |
-
-> **macOS notes:**
-> - Set `install_root` to a user-writable path (e.g. `/usr/local`) — `/opt` requires root.
-> - Add the host to the `[macos]` group in `hosts.ini`.
-> - The `rvdas_user` is set automatically to the connecting user; no new system user is created.
-
-## Updating OpenRVDAS
-
-Pull the latest code, update requirements, run migrations, and reload services:
-
-```bash
-ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
-```
-
-To update to a specific branch:
-```bash
-ansible-playbook update.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass \
-  -e "openrvdas_branch=dev"
-```
-
-## Backup
-
-Creates a timestamped `.tar.gz` on the target host containing the Django database
-(as portable JSON), cruise/logger config files, and site-specific settings files:
-
-```bash
-ansible-playbook backup.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
-```
-
-To also fetch the backup to `./backups/` on your local machine:
-```bash
-ansible-playbook backup.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass \
-  -e "fetch_backup=true"
-```
-
-## Status
-
-Quick health check across all hosts — services, disk, version, last log activity:
-
-```bash
-ansible-playbook status.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
-```
-
-## Smoke Test
-
-After installation, `configure_and_install.sh` will offer to run the smoke test
-automatically. You can also run it at any time:
-
-```bash
-ansible-playbook smoke-test.yml -i inventory/hosts.ini \
-  --vault-password-file vault/.vault_pass --limit <host>
-```
-
-The smoke test checks:
-- All supervisord processes are running (none FATAL or EXITED)
-- nginx is active (when GUI is installed)
-- Web server responds to HTTP/HTTPS
-- OpenRVDAS directory and `manage.py` are present
-- Django migrations are fully applied
-- Disk usage on the install root is under 85%
-
-## Re-running and Updates
-
-The playbook is fully idempotent. Re-running it will:
-
-- Pull the latest code from the configured branch
-- Re-install any new Python requirements
-- Re-apply any changed configuration files
-- Reload supervisord if any service configs changed
-
-To update OpenRVDAS after a new release:
-
-```bash
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass
-```
-
-## Running Specific Roles
+The vault password is saved to `vault/.vault_pass` (mode 600, git-ignored) by
+the installer, so you won't need to type it again.
 
 Use `--tags` to run only part of the playbook:
 
@@ -296,48 +142,106 @@ Use `--tags` to run only part of the playbook:
 Examples:
 
 ```bash
-# Apply only supervisor config changes
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass --tags supervisor
+# Re-apply only supervisor config changes
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --tags supervisor
 
 # Re-run Django migrations after a code update
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass --tags django
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --tags django
 
 # Regenerate the nginx config (e.g. after changing SSL settings)
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass --tags nginx,supervisor
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --tags nginx,supervisor
 ```
 
-## Dry Run
+---
 
-Check what would change without making any modifications:
+### `update.yml` — Update OpenRVDAS Code
+
+Pulls the latest code from the configured branch, updates Python requirements,
+applies settings, runs migrations, and reloads services — without a full
+reinstall.
 
 ```bash
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass --check
+ansible-playbook update.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass
 ```
 
-## SSL Configuration
-
-### Self-signed certificate (default when `use_ssl: true`)
+To update to a specific branch:
 
 ```bash
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass \
-  -e "use_ssl=true"
+ansible-playbook update.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass \
+  -e "openrvdas_branch=dev"
 ```
 
-Ansible will generate a certificate valid for 10 years with SANs for the
-hostname, `localhost`, `127.0.0.1`, and the server's IP address.
+---
 
-### Supplying your own certificate
+### `backup.yml` — Backup
 
-Place the certificate and key files somewhere accessible to Ansible, then:
+Creates a timestamped `.tar.gz` on the target host containing:
+- Django database (portable JSON via `dumpdata`)
+- Cruise and logger configuration files
+- Site-specific `settings.py` files
 
 ```bash
-ansible-playbook site.yml -i inventory/hosts.ini --ask-vault-pass \
-  -e "use_ssl=true have_ssl_certificate=true ssl_crt_location=/path/to/your.crt ssl_key_location=/path/to/your.key"
+ansible-playbook backup.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass
 ```
 
-## Services
+To also fetch the backup to `./backups/` on your local machine:
 
-All services run under supervisord. To manage them on the target host:
+```bash
+ansible-playbook backup.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass \
+  -e "fetch_backup=true"
+```
+
+---
+
+### `status.yml` — Health Check
+
+Quick status report across all hosts: supervisor process state, disk usage,
+current git branch and version, last log activity, and system uptime.
+
+```bash
+ansible-playbook status.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass
+```
+
+To check a single host:
+
+```bash
+ansible-playbook status.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --limit <host>
+```
+
+---
+
+### `smoke-test.yml` — Post-Install Verification
+
+Verifies the installation is working correctly. Run automatically by
+`configure_and_install.sh` after installation, or at any time:
+
+```bash
+ansible-playbook smoke-test.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --limit <host>
+```
+
+Checks:
+- All supervisord processes are running (none FATAL or EXITED)
+- nginx is active (when GUI is installed)
+- Web server responds to HTTP/HTTPS
+- OpenRVDAS directory and `manage.py` are present
+- Django migrations are fully applied
+- Disk usage on the install root is under 85%
+
+---
+
+## Managing an Installed System
+
+All services run under supervisord on the target host:
 
 ```bash
 # Check status of all services
@@ -346,8 +250,6 @@ supervisorctl status
 # Restart a specific service
 supervisorctl restart logger_manager
 supervisorctl restart cached_data_server
-
-# Restart the web GUI
 supervisorctl restart django
 
 # View logs
@@ -356,11 +258,117 @@ tail -f /var/log/openrvdas/nginx.stderr
 tail -f /var/log/openrvdas/uwsgi.stderr
 ```
 
+---
+
+## Manual Setup (without the interactive installer)
+
+### 1. Install Ansible and required collections
+
+```bash
+# macOS
+brew install ansible
+
+# Ubuntu/Debian
+sudo apt install ansible
+
+# Then install collections
+ansible-galaxy collection install -r requirements.yml
+```
+
+### 2. Set up your secrets file
+
+```bash
+cp vault/secrets.yml.example vault/secrets.yml
+```
+
+Edit `vault/secrets.yml` and set real values, then encrypt it:
+
+```bash
+ansible-vault encrypt vault/secrets.yml
+```
+
+Save the vault password to a file for convenience:
+
+```bash
+echo 'your-vault-password' > vault/.vault_pass
+chmod 600 vault/.vault_pass
+```
+
+### 3. Add your host to the inventory
+
+Edit `inventory/hosts.ini`. The host must appear in **both** `[openrvdas]`
+and the appropriate OS group so the correct OS-specific variables are applied.
+
+**Remote Ubuntu host:**
+```ini
+[openrvdas]
+my-vessel ansible_host=192.168.1.10 ansible_user=root ansible_python_interpreter=/usr/bin/python3
+
+[ubuntu]
+my-vessel
+```
+
+**Local install:**
+```ini
+[openrvdas]
+localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+
+[ubuntu]
+localhost
+```
+
+### 4. Verify connectivity
+
+```bash
+ansible openrvdas -i inventory/hosts.ini -m ping
+```
+
+### 5. Run the playbook
+
+```bash
+ansible-playbook site.yml -i inventory/hosts.ini --vault-password-file vault/.vault_pass
+```
+
+If the connecting user needs a sudo password:
+
+```bash
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass --ask-become-pass
+```
+
+---
+
+## SSL Configuration
+
+### Self-signed certificate (default when `use_ssl: true`)
+
+Ansible generates a certificate valid for 10 years with SANs for the hostname,
+`localhost`, `127.0.0.1`, and the server's IP address.
+
+```bash
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass \
+  -e "use_ssl=true"
+```
+
+### Supplying your own certificate
+
+```bash
+ansible-playbook site.yml -i inventory/hosts.ini \
+  --vault-password-file vault/.vault_pass \
+  -e "use_ssl=true have_ssl_certificate=true \
+      ssl_crt_location=/path/to/your.crt \
+      ssl_key_location=/path/to/your.key"
+```
+
+---
+
 ## Directory Structure
 
 ```
 openrvdas-ansible/
-├── site.yml                        # Top-level install playbook
+├── configure_and_install.sh        # Interactive installer (start here)
+├── site.yml                        # Full install playbook
 ├── update.yml                      # Update OpenRVDAS code and restart services
 ├── backup.yml                      # Backup database and config files
 ├── status.yml                      # Health check across hosts
@@ -379,8 +387,8 @@ openrvdas-ansible/
 │       ├── void.yml                # Void Linux OS settings
 │       └── macos.yml               # macOS settings
 ├── vault/
-│   ├── secrets.yml                 # Encrypted secrets (created by you)
-│   └── secrets.yml.example         # Template — copy to secrets.yml
+│   ├── secrets.yml                 # Encrypted secrets (created by installer)
+│   └── secrets.yml.example         # Template
 └── roles/
     ├── common/                     # System user and directory creation
     ├── packages/                   # OS package installation
