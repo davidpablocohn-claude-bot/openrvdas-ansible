@@ -62,3 +62,23 @@
     enabled: "{{ openrvdas_autostart }}"
     state: started
   become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  failed_when: false
+
+# On RHEL/Rocky in Docker (no systemd), `systemctl start supervisord` exits 0
+# but never actually starts the process.  Verify by checking for the socket.
+- name: Check if supervisord socket exists after service start
+  ansible.builtin.stat:
+    path: "{{ supervisor_sock }}"
+  register: supervisord_sock_stat
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  when: ansible_facts['os_family'] != 'Darwin'
+
+# Start supervisord directly if the socket is absent (non-systemd container).
+- name: Start supervisord directly if socket is absent (non-systemd container)
+  ansible.builtin.command: supervisord
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  changed_when: true
+  when:
+    - ansible_facts['os_family'] != 'Darwin'
+    - not supervisord_sock_stat.stat.exists
+  failed_when: false
