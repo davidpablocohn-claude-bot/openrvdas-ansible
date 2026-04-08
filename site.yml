@@ -21,7 +21,7 @@
 
   pre_tasks:
     - name: Bootstrap Python on Void Linux (no Python on fresh install)
-      ansible.builtin.raw: xbps-install -Sy python3
+      ansible.builtin.raw: xbps-install -yu xbps && xbps-install -Sy python3
       when: inventory_hostname in groups.get('void', [])
       changed_when: false
       tags: always
@@ -31,13 +31,18 @@
         # If python3 minor version is already >= 9 (Ubuntu 22.04+, Debian 12, etc.), done.
         _minor=$(python3 -V 2>/dev/null | awk -F. '{print $2}')
         [ "${_minor:-0}" -ge 9 ] && exit 0
+        # python3 may simply not be installed yet (minimal Debian image).
+        # Install the system python3 package and re-check before trying python3.9.
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -q && apt-get install -y python3 2>/dev/null || true
+        _minor=$(python3 -V 2>/dev/null | awk -F. '{print $2}')
+        [ "${_minor:-0}" -ge 9 ] && exit 0
         # Ubuntu 20.04 only: system python3 is 3.8, need python3.9.
         # Fix broken sitecustomize.py from previous failed runs first.
         python3.9 -c '' 2>&1 | grep -q 'sitecustomize' && \
           rm -f /usr/lib/python3.9/sitecustomize.py /usr/local/lib/python3.9/sitecustomize.py 2>/dev/null || true
         command -v python3.9 >/dev/null 2>&1 && exit 0
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -q && apt-get install -y python3.9 2>/dev/null || \
+        apt-get install -y python3.9 2>/dev/null || \
           (apt-get install -y software-properties-common && \
            add-apt-repository -y ppa:deadsnakes/ppa && \
            apt-get update -q && \
