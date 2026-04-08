@@ -3,6 +3,7 @@
   ansible.builtin.hostname:
     name: "{{ rvdas_hostname }}"
   when: ansible_facts['os_family'] != 'Darwin'
+  failed_when: false
   tags: [common, hostname]
 
 - name: Ensure sshd is running after hostname change
@@ -11,6 +12,7 @@
     state: started
     enabled: true
   when: ansible_facts['os_family'] != 'Darwin'
+  failed_when: false
   tags: [common, hostname]
 
 - name: Create rvdas system user

@@ -1,35 +1,39 @@
 ---
 # Ubuntu / Debian package installation
-# Installs Python 3.13 via the deadsnakes PPA
+# Uses apt-get directly (via ansible.builtin.command) instead of ansible.builtin.apt
+# because apt_pkg is a C extension compiled only for the system Python (3.8 on
+# Ubuntu 20.04), and Ansible 2.12+ requires Python 3.9+ on managed nodes — the
+# two requirements are incompatible with the apt module.
 
 - name: Update apt cache
-  ansible.builtin.apt:
-    update_cache: true
-    force_apt_get: true
-  failed_when: false
+  ansible.builtin.command: apt-get update -q
+  changed_when: false
 
 - name: Install prerequisite packages for PPA management
-  ansible.builtin.apt:
-    name:
-      - software-properties-common
-      - apt-transport-https
-      - ca-certificates
-    state: present
-    force_apt_get: true
+  ansible.builtin.command: >-
+    apt-get install -y -q
+    software-properties-common apt-transport-https ca-certificates
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: false
 
 - name: Add deadsnakes PPA for Python {{ python_version }}
-  ansible.builtin.apt_repository:
-    repo: ppa:deadsnakes/ppa
-    state: present
-    update_cache: true
+  ansible.builtin.command: add-apt-repository -y ppa:deadsnakes/ppa
+  args:
+    creates: /etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-*.list
+  when: use_deadsnakes | default(true)
+
+- name: Update apt cache after adding PPA
+  ansible.builtin.command: apt-get update -q
+  changed_when: false
   when: use_deadsnakes | default(true)
 
 - name: Install system packages
-  ansible.builtin.apt:
-    name: "{{ system_packages + python_packages }}"
-    state: present
-    force_apt_get: true
-
+  ansible.builtin.command: >-
+    apt-get install -y -q {{ (system_packages + python_packages) | join(' ') }}
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: false
 
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:

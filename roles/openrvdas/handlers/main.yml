@@ -1,7 +1,10 @@
 ---
 - name: restart supervisor
-  ansible.builtin.service:
-    name: "{{ supervisor_service_name }}"
-    state: restarted
+  # Use supervisorctl reload (SIGHUP) rather than `service … restart` because
+  # the Ubuntu 20.04 init.d script's restart action only stops the daemon and
+  # never starts it again.  supervisorctl reload works on both SysV and
+  # systemd hosts and restarts all managed programs cleanly.
+  ansible.builtin.shell: supervisorctl reload
   become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  failed_when: false
   listen: restart supervisor

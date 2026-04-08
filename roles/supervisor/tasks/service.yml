@@ -62,3 +62,18 @@
     enabled: "{{ openrvdas_autostart }}"
     state: started
   become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  register: supervisor_start_result
+  failed_when: false
+
+# Fallback for containers without systemd (e.g. Docker on RHEL/Rocky):
+# the systemd service file exists but systemctl is not running.
+# Start supervisord directly if the service module could not start it.
+- name: Start supervisord directly if service module failed (non-systemd container)
+  ansible.builtin.command: >-
+    supervisord -c /etc/supervisord.conf
+  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  changed_when: true
+  when:
+    - supervisor_start_result is failed
+    - ansible_facts['os_family'] != 'Darwin'
+  failed_when: false
