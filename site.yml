@@ -21,7 +21,7 @@
 
   pre_tasks:
     - name: Bootstrap Python on Void Linux (no Python on fresh install)
-      ansible.builtin.raw: xbps-install -yu xbps && xbps-install -Sy python3
+      ansible.builtin.raw: xbps-install -Syu xbps && xbps-install -Sy python3
       when: inventory_hostname in groups.get('void', [])
       changed_when: false
       tags: always
