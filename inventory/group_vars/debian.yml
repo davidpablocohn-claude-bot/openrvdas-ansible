@@ -21,10 +21,12 @@ rvdas_groups:
   - tty
   - dialout
 
-# ── Python 3.13 via deadsnakes PPA ────────────────────────────────────────────
-python_version: "3.13"
-python_bin: /usr/bin/python3.13
-use_deadsnakes: true
+# ── Python (system) ───────────────────────────────────────────────────────────
+# Launchpad PPAs are Ubuntu-only and do not work on Debian.
+# Debian 11 ships Python 3.9 and Debian 12 ships Python 3.11 — both sufficient.
+python_version: "3"
+python_bin: /usr/bin/python3
+use_deadsnakes: false
 
 system_packages:
   - git
