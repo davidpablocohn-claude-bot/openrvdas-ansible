@@ -21,42 +21,50 @@ jobs:
             python_version: "3.9"
             python_bin: /usr/bin/python3.9
             use_deadsnakes: "false"
+            # Bootstrap installs python3.9; system python3 is 3.8 which Ansible rejects
+            ansible_interpreter: /usr/bin/python3.9
           - name: ubuntu-22.04
             image: ubuntu:22.04
             group: ubuntu
             python_version: "3.10"
             python_bin: /usr/bin/python3.10
             use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
           - name: ubuntu-24.04
             image: ubuntu:24.04
             group: ubuntu
             python_version: "3.12"
             python_bin: /usr/bin/python3.12
             use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
           - name: debian-12
             image: debian:12
             group: debian
             python_version: "3.11"
             python_bin: /usr/bin/python3.11
             use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
           - name: rocky-9
             image: rockylinux:9
             group: rocky
             python_version: "3.12"
             python_bin: /usr/bin/python3.12
             use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
           - name: almalinux-9
             image: almalinux:9
             group: alma
             python_version: "3.12"
             python_bin: /usr/bin/python3.12
             use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
           - name: void
             image: ghcr.io/void-linux/void-linux:latest-full-x86_64
             group: void
             python_version: "3"
             python_bin: /usr/bin/python3
             use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
 
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +111,7 @@ jobs:
         run: |
           cat > inventory/ci-hosts.ini << 'HOSTS'
           [openrvdas]
-          ci-test ansible_connection=docker ansible_host=ci-container ansible_python_interpreter=/usr/bin/python3
+          ci-test ansible_connection=docker ansible_host=ci-container ansible_python_interpreter=${{ matrix.ansible_interpreter }}
 
           [${{ matrix.group }}]
           ci-test
