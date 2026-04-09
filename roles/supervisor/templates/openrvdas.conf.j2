@@ -11,7 +11,7 @@ chown=nobody:{{ rvdas_group }}
 {% endif %}
 {% if supervisord_webinterface %}
 [inet_http_server]
-port=127.0.0.1:{{ supervisord_webinterface_port }}
+port={{ supervisord_webinterface_bind }}:{{ supervisord_webinterface_port }}
 {% if supervisord_webinterface_auth %}
 username={{ supervisord_webinterface_user }}
 password={SHA}{{ supervisord_webinterface_pass | hash('sha1') }}

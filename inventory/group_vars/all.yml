@@ -49,3 +49,7 @@ supervisord_webinterface_auth: false
 supervisord_webinterface_port: 9001
 supervisord_webinterface_user: "{{ rvdas_user }}"
 # supervisord_webinterface_pass is in vault/secrets.yml
+# Bind address for the supervisord HTTP interface.
+# 127.0.0.1 = local access only (default, safest).
+# 0.0.0.0   = accessible from any network interface (needed for remote access).
+supervisord_webinterface_bind: "127.0.0.1"

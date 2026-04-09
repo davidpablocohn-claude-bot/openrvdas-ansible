@@ -108,6 +108,14 @@ interactive installer writes per-host overrides to
 | `supervisord_webinterface` | `false` | Enable supervisord HTTP web interface |
 | `supervisord_webinterface_auth` | `false` | Require login for supervisord web interface |
 | `supervisord_webinterface_port` | `9001` | Port for supervisord web interface |
+| `supervisord_webinterface_bind` | `127.0.0.1` | Bind address for supervisord web interface. Set to `0.0.0.0` to allow remote access |
+
+> **Remote access to the supervisord web interface:** By default the interface
+> binds to `127.0.0.1` and is only reachable from the machine itself. To access
+> it from another machine on your network, set `supervisord_webinterface_bind:
+> "0.0.0.0"` and re-run the playbook (or just the `supervisor` tag). Note that
+> if `supervisord_webinterface_auth` is `false`, the interface will be
+> unauthenticated — consider enabling auth or using an SSH tunnel instead.
 
 ---
 
