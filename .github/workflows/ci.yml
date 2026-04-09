@@ -75,17 +75,33 @@ jobs:
             sleep infinity
 
       - name: Install sudo shim in container
-        # Containers run as root; Ansible's default become method (sudo) fails
-        # if sudo isn't installed. Create a passthrough shim so become works.
+        # Containers run as root so no privilege escalation is needed, but
+        # Ansible's default become method is sudo. Create a shim that strips
+        # sudo's own flags and execs the remaining command directly.
         run: |
-          docker exec ci-container sh -c \
-            'command -v sudo >/dev/null 2>&1 || { mkdir -p /usr/local/bin && printf "#!/bin/sh\nexec \"\$@\"\n" > /usr/local/bin/sudo && chmod 755 /usr/local/bin/sudo; }'
+          printf '%s\n' \
+            '#!/bin/sh' \
+            'while [ $# -gt 0 ]; do' \
+            '  case "$1" in' \
+            '    -H|-S|-n|-k|-K|-b|-v|-V|-l|-L|-e|-i|-E) shift ;;' \
+            '    -u|-g|-r|-t|-C|-c|-D|-R|-T|-h|-p|-U) shift 2 ;;' \
+            '    --) shift; break ;;' \
+            '    -*) shift ;;' \
+            '    *) break ;;' \
+            '  esac' \
+            'done' \
+            'exec "$@"' \
+            > /tmp/sudo_shim
+          chmod 755 /tmp/sudo_shim
+          docker cp /tmp/sudo_shim ci-container:/usr/local/bin/sudo
 
       - name: Write CI inventory
-        # GHA expands ${{ }} before the shell runs, so matrix.group is
-        # interpolated even though the heredoc delimiter is quoted.
+        # Inventory must live inside inventory/ so Ansible finds inventory/group_vars
+        # and inventory/host_vars automatically.
+        # GHA expands ${{ }} before the shell runs, so matrix.group is substituted
+        # even though the heredoc delimiter is quoted.
         run: |
-          cat > /tmp/ci-hosts.ini << 'HOSTS'
+          cat > inventory/ci-hosts.ini << 'HOSTS'
           [openrvdas]
           ci-test ansible_connection=docker ansible_host=ci-container ansible_python_interpreter=/usr/bin/python3
 
@@ -131,13 +147,13 @@ jobs:
         run: cp vault/secrets.yml.example vault/secrets.yml
 
       - name: Run playbook
-        run: ansible-playbook site.yml -i /tmp/ci-hosts.ini
+        run: ansible-playbook site.yml -i inventory/ci-hosts.ini
 
       - name: Idempotency check (second run)
         # Allow up to 1 changed task: Void Linux pip-installs supervisor with
         # changed_when: true by design (pip has no built-in changed detection).
         run: |
-          out=$(ansible-playbook site.yml -i /tmp/ci-hosts.ini)
+          out=$(ansible-playbook site.yml -i inventory/ci-hosts.ini)
           echo "$out"
           changed=$(echo "$out" | grep -oP 'ci-test\s*:.*changed=\K\d+' || echo 0)
           echo "Changed tasks on second run: $changed"
@@ -149,14 +165,8 @@ jobs:
 
   # ── macOS: native runner, Ansible connecting to localhost ─────────────────────
   test-macos:
-    name: "macOS / ${{ matrix.runner }}"
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-14   # Apple Silicon (arm64)
-          - runner: macos-13   # Intel (x86_64)
+    name: "macOS / macos-14"
+    runs-on: macos-14
 
     steps:
       - uses: actions/checkout@v4
@@ -168,8 +178,9 @@ jobs:
           ansible-galaxy collection install -r requirements.yml
 
       - name: Write CI inventory
+        # Inventory lives inside inventory/ so Ansible finds group_vars and host_vars.
         run: |
-          cat > /tmp/ci-macos-hosts.ini << 'HOSTS'
+          cat > inventory/ci-macos-hosts.ini << 'HOSTS'
           [openrvdas]
           ci-macos ansible_connection=local ansible_python_interpreter=auto_silent
 
@@ -209,4 +220,4 @@ jobs:
         run: cp vault/secrets.yml.example vault/secrets.yml
 
       - name: Run playbook
-        run: ansible-playbook site.yml -i /tmp/ci-macos-hosts.ini
+        run: ansible-playbook site.yml -i inventory/ci-macos-hosts.ini
