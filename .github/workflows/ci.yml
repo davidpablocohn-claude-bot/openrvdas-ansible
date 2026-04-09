@@ -74,6 +74,13 @@ jobs:
             ${{ matrix.image }} \
             sleep infinity
 
+      - name: Install sudo shim in container
+        # Containers run as root; Ansible's default become method (sudo) fails
+        # if sudo isn't installed. Create a passthrough shim so become works.
+        run: |
+          docker exec ci-container sh -c \
+            'command -v sudo >/dev/null 2>&1 || { mkdir -p /usr/local/bin && printf "#!/bin/sh\nexec \"\$@\"\n" > /usr/local/bin/sudo && chmod 755 /usr/local/bin/sudo; }'
+
       - name: Write CI inventory
         # GHA expands ${{ }} before the shell runs, so matrix.group is
         # interpolated even though the heredoc delimiter is quoted.
