@@ -3,8 +3,9 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main, master, dev]
   pull_request:
+    branches: [main, master, dev]
 
 jobs:
   # ── Linux: each platform runs in a Docker container on an ubuntu-latest runner ─
