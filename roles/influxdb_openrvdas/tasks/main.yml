@@ -1,0 +1,33 @@
+---
+# Configures the OpenRVDAS installation on this host to use an InfluxDB instance.
+# The InfluxDB host may be the same machine or a separate one.
+
+- name: Resolve InfluxDB connection details
+  set_fact:
+    _influx_url: >-
+      {{
+        hostvars[influx_host]['influxdb_url']
+        if influx_host is defined and influx_host in hostvars
+        else influxdb_url
+      }}
+    _influx_token: >-
+      {{
+        hostvars[influx_host]['influxdb_token']
+        if influx_host is defined and influx_host in hostvars
+        else influxdb_token
+      }}
+    _influx_org: >-
+      {{
+        hostvars[influx_host]['influxdb_org']
+        if influx_host is defined and influx_host in hostvars
+        else influxdb_org
+      }}
+    _influx_bucket: >-
+      {{
+        hostvars[influx_host]['influxdb_bucket']
+        if influx_host is defined and influx_host in hostvars
+        else influxdb_bucket
+      }}
+
+- name: Write InfluxDB settings for OpenRVDAS (v{{ influxdb_version }})
+  include_tasks: "settings_v{{ influxdb_version }}.yml"

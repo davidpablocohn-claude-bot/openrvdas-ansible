@@ -1,0 +1,10 @@
+---
+- name: Deploy InfluxDB v2 settings.py for OpenRVDAS
+  template:
+    src: settings_v2.py.j2
+    dest: "{{ install_root }}/openrvdas/database/influxdb/settings.py"
+    mode: "0640"
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+  become: "{{ ansible_os_family != 'Darwin' }}"
+  notify: restart openrvdas services

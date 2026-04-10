@@ -1,0 +1,6 @@
+---
+# InfluxDB v3 setup — stub for future implementation
+# v3 uses a different API and storage engine; extend this file when v3 support is added.
+- name: InfluxDB v3 setup not yet implemented
+  fail:
+    msg: "influxdb_version=3 is not yet implemented. Use influxdb_version=2."

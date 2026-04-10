@@ -1,0 +1,8 @@
+---
+# InfluxData repo is already added by the influxdb role; telegraf is in the same repo.
+- name: Install telegraf
+  apt:
+    name: telegraf
+    state: present
+    update_cache: false
+  become: true

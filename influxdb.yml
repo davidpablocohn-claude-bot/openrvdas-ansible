@@ -1,0 +1,48 @@
+---
+# InfluxDB / Grafana / Telegraf installer
+#
+# Usage:
+#   ansible-playbook influxdb.yml -i inventory/hosts.ini \
+#     --vault-password-file vault/.vault_pass
+#
+# Optional: limit to a single host
+#   ansible-playbook influxdb.yml -i inventory/hosts.ini \
+#     --vault-password-file vault/.vault_pass --limit <host>
+#
+# Tags:
+#   packages   - install InfluxDB, Grafana, Telegraf packages
+#   influxdb   - InfluxDB installation and initial setup
+#   grafana    - Grafana installation and configuration
+#   telegraf   - Telegraf installation and configuration
+#   supervisor - Deploy supervisor config and reload
+#   openrvdas  - Configure OpenRVDAS settings.py for InfluxDB
+
+# ── Play 1: Set up InfluxDB host(s) ───────────────────────────────────────────
+- name: Install and configure InfluxDB stack
+  hosts: influxdb
+  vars_files:
+    - vault/secrets.yml
+  roles:
+    - role: influx_base
+      when: standalone_influx | bool
+      tags: [packages, supervisor]
+
+    - role: influxdb
+      tags: [packages, influxdb, supervisor]
+
+    - role: grafana
+      when: install_grafana | bool
+      tags: [packages, grafana, supervisor]
+
+    - role: telegraf
+      when: install_telegraf | bool
+      tags: [packages, telegraf, supervisor]
+
+# ── Play 2: Configure OpenRVDAS to use InfluxDB ───────────────────────────────
+- name: Configure OpenRVDAS InfluxDB integration
+  hosts: openrvdas
+  vars_files:
+    - vault/secrets.yml
+  roles:
+    - role: influxdb_openrvdas
+      tags: [openrvdas]

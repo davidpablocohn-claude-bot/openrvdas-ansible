@@ -1,0 +1,39 @@
+---
+- name: Install apt-transport-https and curl
+  apt:
+    name:
+      - apt-transport-https
+      - curl
+      - gnupg
+    state: present
+    update_cache: true
+  become: true
+
+- name: Add InfluxDB GPG key
+  shell: |
+    curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key \
+      | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
+  args:
+    creates: /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
+  become: true
+
+- name: Add InfluxDB apt repository
+  copy:
+    dest: /etc/apt/sources.list.d/influxdata.list
+    content: "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main\n"
+    mode: "0644"
+  become: true
+  register: influx_repo
+
+- name: Update apt cache after adding repo
+  apt:
+    update_cache: true
+  become: true
+  when: influx_repo.changed
+
+- name: Install influxdb2
+  apt:
+    name: influxdb2
+    state: present
+  become: true
+  notify: restart influxdb

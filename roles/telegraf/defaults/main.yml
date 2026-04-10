@@ -1,0 +1,9 @@
+---
+telegraf_bin: /usr/bin/telegraf
+telegraf_conf: /etc/telegraf/telegraf.conf
+telegraf_user: telegraf
+telegraf_group: telegraf
+
+# Interval for collecting metrics
+telegraf_interval: "10s"
+telegraf_flush_interval: "10s"

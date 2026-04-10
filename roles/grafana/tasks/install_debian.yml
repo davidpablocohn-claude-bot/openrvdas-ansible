@@ -1,0 +1,28 @@
+---
+- name: Add Grafana GPG key
+  shell: |
+    curl -fsSL https://apt.grafana.com/gpg.key \
+      | gpg --dearmor -o /etc/apt/trusted.gpg.d/grafana.gpg
+  args:
+    creates: /etc/apt/trusted.gpg.d/grafana.gpg
+  become: true
+
+- name: Add Grafana apt repository
+  copy:
+    dest: /etc/apt/sources.list.d/grafana.list
+    content: "deb [signed-by=/etc/apt/trusted.gpg.d/grafana.gpg] https://apt.grafana.com stable main\n"
+    mode: "0644"
+  become: true
+  register: grafana_repo
+
+- name: Update apt cache after adding repo
+  apt:
+    update_cache: true
+  become: true
+  when: grafana_repo.changed
+
+- name: Install grafana
+  apt:
+    name: grafana
+    state: present
+  become: true

@@ -1,0 +1,11 @@
+---
+- name: Install Telegraf via Homebrew
+  homebrew:
+    name: telegraf
+    state: present
+  become: false
+
+- name: Set macOS Telegraf paths
+  set_fact:
+    telegraf_bin: "{{ homebrew_prefix }}/bin/telegraf"
+    telegraf_conf: "{{ homebrew_prefix }}/etc/telegraf/telegraf.conf"

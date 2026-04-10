@@ -1,0 +1,24 @@
+---
+- name: Ensure Grafana data directories exist (Linux)
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: "0750"
+  loop:
+    - "{{ grafana_data }}"
+    - "{{ grafana_log }}"
+    - "{{ grafana_plugins }}"
+  become: true
+  when: ansible_os_family != "Darwin"
+
+- name: Provision InfluxDB datasource for Grafana
+  template:
+    src: datasource_influxdb.yml.j2
+    dest: "{{ grafana_home }}/conf/provisioning/datasources/influxdb.yml"
+    mode: "0640"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+  become: "{{ ansible_os_family != 'Darwin' }}"
+  notify: reload grafana

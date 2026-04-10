@@ -1,0 +1,21 @@
+---
+- name: Determine supervisor config directory
+  set_fact:
+    influx_supervisor_conf_dir: >-
+      {{
+        '/etc/supervisor/conf.d'
+        if ansible_os_family == 'Debian'
+        else '/etc/supervisord.d'
+        if ansible_os_family in ['RedHat', 'Rocky', 'Alma']
+        else homebrew_prefix + '/etc/supervisor.d'
+        if ansible_os_family == 'Darwin'
+        else '/etc/supervisor/conf.d'
+      }}
+
+- name: Deploy influx supervisor config
+  template:
+    src: influx.conf.j2
+    dest: "{{ influx_supervisor_conf_dir }}/influx.conf"
+    mode: "0644"
+  become: "{{ ansible_os_family != 'Darwin' }}"
+  notify: reload supervisord

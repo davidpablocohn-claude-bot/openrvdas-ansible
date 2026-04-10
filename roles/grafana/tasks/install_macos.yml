@@ -1,0 +1,15 @@
+---
+- name: Install Grafana via Homebrew
+  homebrew:
+    name: grafana
+    state: present
+  become: false
+
+- name: Set macOS Grafana binary path
+  set_fact:
+    grafana_bin: "{{ homebrew_prefix }}/bin/grafana-server"
+    grafana_home: "{{ homebrew_prefix }}/share/grafana"
+    grafana_conf: "{{ homebrew_prefix }}/etc/grafana/grafana.ini"
+    grafana_data: "{{ homebrew_prefix }}/var/lib/grafana"
+    grafana_log: "{{ homebrew_prefix }}/var/log/grafana"
+    grafana_plugins: "{{ homebrew_prefix }}/var/lib/grafana/plugins"

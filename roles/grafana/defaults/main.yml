@@ -1,0 +1,14 @@
+---
+# Grafana defaults — most settings live in roles/influxdb/defaults/main.yml
+# since grafana is deployed as part of the influx stack.
+# These are supplementary defaults for the grafana role when used standalone.
+
+grafana_port: 3000
+grafana_user: grafana
+grafana_group: grafana
+grafana_bin: /usr/sbin/grafana-server
+grafana_home: /usr/share/grafana
+grafana_conf: /etc/grafana/grafana.ini
+grafana_data: /var/lib/grafana
+grafana_log: /var/log/grafana
+grafana_plugins: /var/lib/grafana/plugins

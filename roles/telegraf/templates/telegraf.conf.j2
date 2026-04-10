@@ -1,0 +1,45 @@
+# Telegraf configuration — managed by Ansible, do not edit by hand
+
+[global_tags]
+  host = "{{ rvdas_hostname | default(ansible_hostname) }}"
+
+[agent]
+  interval = "{{ telegraf_interval }}"
+  round_interval = true
+  metric_batch_size = 1000
+  metric_buffer_limit = 10000
+  collection_jitter = "0s"
+  flush_interval = "{{ telegraf_flush_interval }}"
+  flush_jitter = "0s"
+  precision = ""
+  hostname = "{{ rvdas_hostname | default(ansible_hostname) }}"
+  omit_hostname = false
+
+# ── Output: InfluxDB v2 ───────────────────────────────────────────────────────
+[[outputs.influxdb_v2]]
+  urls = ["{{ influxdb_url }}"]
+  token = "{{ influxdb_token }}"
+  organization = "{{ influxdb_org }}"
+  bucket = "{{ influxdb_bucket }}"
+
+# ── Input: system metrics ─────────────────────────────────────────────────────
+[[inputs.cpu]]
+  percpu = true
+  totalcpu = true
+  collect_cpu_time = false
+  report_active = false
+
+[[inputs.disk]]
+  ignore_fs = ["tmpfs", "devtmpfs", "devfs", "iso9660", "overlay", "aufs", "squashfs"]
+
+[[inputs.diskio]]
+
+[[inputs.mem]]
+
+[[inputs.net]]
+
+[[inputs.processes]]
+
+[[inputs.swap]]
+
+[[inputs.system]]

@@ -1,0 +1,48 @@
+---
+# Sets up a minimal supervisord for hosts that are NOT running OpenRVDAS
+# (i.e., standalone InfluxDB/Grafana/Telegraf hosts).
+# On co-located hosts supervisord is already managed by the openrvdas role.
+
+- name: Install supervisor (Debian/Ubuntu)
+  apt:
+    name: supervisor
+    state: present
+    update_cache: true
+  become: true
+  when: ansible_os_family == "Debian"
+
+- name: Install supervisor (RedHat/Rocky/Alma/CentOS)
+  package:
+    name: supervisor
+    state: present
+  become: true
+  when: ansible_os_family == "RedHat"
+
+- name: Install supervisor (macOS via pip)
+  pip:
+    name: supervisor
+    state: present
+    executable: pip3
+  when: ansible_os_family == "Darwin"
+
+- name: Ensure supervisor conf.d directory exists
+  file:
+    path: "{{ influx_supervisor_conf_dir | default('/etc/supervisor/conf.d') }}"
+    state: directory
+    mode: "0755"
+  become: "{{ ansible_os_family != 'Darwin' }}"
+
+- name: Ensure supervisord is running
+  service:
+    name: supervisor
+    state: started
+    enabled: true
+  become: true
+  when: ansible_os_family != "Darwin"
+
+- name: Ensure supervisord is running (macOS launchd)
+  command: supervisord -c {{ homebrew_prefix }}/etc/supervisord.conf
+  args:
+    creates: /tmp/supervisord.pid
+  when: ansible_os_family == "Darwin"
+  ignore_errors: true

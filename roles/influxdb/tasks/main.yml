@@ -1,0 +1,25 @@
+---
+- name: Create InfluxDB log directory
+  file:
+    path: "{{ influx_log_dir }}"
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Install InfluxDB (Debian/Ubuntu)
+  include_tasks: install_debian.yml
+  when: ansible_os_family == "Debian"
+
+- name: Install InfluxDB (RedHat/Rocky/Alma/CentOS)
+  include_tasks: install_redhat.yml
+  when: ansible_os_family == "RedHat"
+
+- name: Install InfluxDB (macOS)
+  include_tasks: install_macos.yml
+  when: ansible_os_family == "Darwin"
+
+- name: Set up InfluxDB (v{{ influxdb_version }})
+  include_tasks: "setup_v{{ influxdb_version }}.yml"
+
+- name: Deploy supervisor config for InfluxDB services
+  include_tasks: supervisor.yml

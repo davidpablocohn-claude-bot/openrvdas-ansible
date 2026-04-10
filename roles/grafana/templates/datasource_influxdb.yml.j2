@@ -1,0 +1,18 @@
+---
+# Grafana datasource provisioning — managed by Ansible, do not edit by hand
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: {{ influxdb_url }}
+    jsonData:
+      version: Flux
+      organization: {{ influxdb_org }}
+      defaultBucket: {{ influxdb_bucket }}
+      tlsSkipVerify: true
+    secureJsonData:
+      token: {{ influxdb_token }}
+    isDefault: true
+    editable: false

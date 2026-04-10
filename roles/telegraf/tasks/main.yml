@@ -1,0 +1,22 @@
+---
+- name: Install Telegraf (Debian/Ubuntu)
+  include_tasks: install_debian.yml
+  when: ansible_os_family == "Debian"
+
+- name: Install Telegraf (RedHat/Rocky/Alma/CentOS)
+  include_tasks: install_redhat.yml
+  when: ansible_os_family == "RedHat"
+
+- name: Install Telegraf (macOS)
+  include_tasks: install_macos.yml
+  when: ansible_os_family == "Darwin"
+
+- name: Deploy Telegraf configuration
+  template:
+    src: telegraf.conf.j2
+    dest: "{{ telegraf_conf }}"
+    mode: "0640"
+    owner: "{{ telegraf_user }}"
+    group: "{{ telegraf_group }}"
+  become: "{{ ansible_os_family != 'Darwin' }}"
+  notify: restart telegraf

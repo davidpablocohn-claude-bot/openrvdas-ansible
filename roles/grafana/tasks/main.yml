@@ -1,0 +1,15 @@
+---
+- name: Install Grafana (Debian/Ubuntu)
+  include_tasks: install_debian.yml
+  when: ansible_os_family == "Debian"
+
+- name: Install Grafana (RedHat/Rocky/Alma/CentOS)
+  include_tasks: install_redhat.yml
+  when: ansible_os_family == "RedHat"
+
+- name: Install Grafana (macOS)
+  include_tasks: install_macos.yml
+  when: ansible_os_family == "Darwin"
+
+- name: Configure Grafana
+  include_tasks: configure.yml

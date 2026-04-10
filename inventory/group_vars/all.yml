@@ -43,6 +43,20 @@ udp_ports_to_open: []
 install_simulate_nbp: false  # install NBP1406 test data simulator
 run_simulate_nbp: false      # autostart the simulator on boot
 
+# ── InfluxDB / Grafana / Telegraf ────────────────────────────────────────────
+influxdb_version: 2             # 2 or 3; only v2 is fully implemented
+influxdb_org: openrvdas
+influxdb_bucket: openrvdas
+influxdb_port: 8086
+influxdb_url: "http://localhost:{{ influxdb_port }}"
+
+install_grafana: true           # install Grafana alongside InfluxDB
+grafana_port: 3000
+
+install_telegraf: true          # install Telegraf alongside InfluxDB
+
+influx_log_dir: /var/log/influx
+
 # ── Supervisord web interface ─────────────────────────────────────────────────
 supervisord_webinterface: false
 supervisord_webinterface_auth: false

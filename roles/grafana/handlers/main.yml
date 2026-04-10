@@ -1,0 +1,6 @@
+---
+- name: reload grafana
+  supervisorctl:
+    name: grafana
+    state: restarted
+  ignore_errors: true

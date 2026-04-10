@@ -1,0 +1,59 @@
+; Supervisor configuration for InfluxDB services
+; Managed by Ansible — do not edit by hand
+
+; ── InfluxDB ──────────────────────────────────────────────────────────────────
+[program:influxdb]
+command={{ influxdb_bin }}
+  --bolt-path {{ influxdb_engine_path }}/influxd.bolt
+  --engine-path {{ influxdb_engine_path }}/engine
+{% if ansible_os_family != "Darwin" %}
+user={{ influxdb_user }}
+{% endif %}
+autostart=true
+autorestart=true
+startretries=3
+stdout_logfile={{ influx_log_dir }}/influxdb.stdout
+stderr_logfile={{ influx_log_dir }}/influxdb.stderr
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=10MB
+
+{% if install_grafana %}
+; ── Grafana ───────────────────────────────────────────────────────────────────
+[program:grafana]
+command={{ grafana_bin }}
+{% if ansible_os_family != "Darwin" %}
+  --homepath {{ grafana_home }}
+  --config {{ grafana_conf }}
+{% endif %}
+{% if ansible_os_family != "Darwin" %}
+user={{ grafana_user }}
+{% endif %}
+environment=GF_SECURITY_ADMIN_PASSWORD="{{ grafana_password }}"
+autostart=true
+autorestart=true
+startretries=3
+stdout_logfile={{ influx_log_dir }}/grafana.stdout
+stderr_logfile={{ influx_log_dir }}/grafana.stderr
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=10MB
+{% endif %}
+
+{% if install_telegraf %}
+; ── Telegraf ──────────────────────────────────────────────────────────────────
+[program:telegraf]
+command={{ telegraf_bin }} --config {{ telegraf_conf }}
+{% if ansible_os_family != "Darwin" %}
+user={{ telegraf_user }}
+{% endif %}
+autostart=true
+autorestart=true
+startretries=3
+stdout_logfile={{ influx_log_dir }}/telegraf.stdout
+stderr_logfile={{ influx_log_dir }}/telegraf.stderr
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=10MB
+{% endif %}
+
+; ── Group ─────────────────────────────────────────────────────────────────────
+[group:influx]
+programs=influxdb{% if install_grafana %},grafana{% endif %}{% if install_telegraf %},telegraf{% endif %}

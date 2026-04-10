@@ -1,0 +1,12 @@
+---
+- name: Install InfluxDB via Homebrew
+  homebrew:
+    name: influxdb
+    state: present
+  become: false
+
+- name: Set macOS InfluxDB binary path
+  set_fact:
+    influxdb_bin: "{{ homebrew_prefix }}/bin/influxd"
+    influxdb_engine_path: "{{ homebrew_prefix }}/var/influxdb2"
+    influxdb_config_path: "{{ homebrew_prefix }}/etc/influxdb2"

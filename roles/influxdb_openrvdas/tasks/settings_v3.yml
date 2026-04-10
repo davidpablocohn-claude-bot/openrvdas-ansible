@@ -1,0 +1,5 @@
+---
+# InfluxDB v3 settings — stub for future implementation
+- name: InfluxDB v3 OpenRVDAS settings not yet implemented
+  fail:
+    msg: "influxdb_version=3 is not yet implemented. Use influxdb_version=2."

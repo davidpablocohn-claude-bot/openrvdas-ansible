@@ -1,0 +1,42 @@
+---
+# InfluxDB role defaults
+
+influxdb_version: 2          # 2 or 3; only v2 is fully implemented
+influxdb_org: openrvdas
+influxdb_bucket: openrvdas
+influxdb_port: 8086
+influxdb_url: "http://localhost:{{ influxdb_port }}"
+
+# Derived: true when this host is NOT in the [openrvdas] inventory group
+standalone_influx: "{{ inventory_hostname not in groups.get('openrvdas', []) }}"
+
+# User/group for InfluxDB process (Linux)
+influxdb_user: influxdb
+influxdb_group: influxdb
+
+# Binary and data paths — overridden per OS in group_vars
+influxdb_bin: /usr/bin/influxd
+influxdb_engine_path: /var/lib/influxdb2
+influxdb_config_path: /etc/influxdb
+
+# Grafana
+install_grafana: true
+grafana_port: 3000
+grafana_user: grafana
+grafana_group: grafana
+grafana_bin: /usr/sbin/grafana-server
+grafana_home: /usr/share/grafana
+grafana_conf: /etc/grafana/grafana.ini
+grafana_data: /var/lib/grafana
+grafana_log: /var/log/grafana
+grafana_plugins: /var/lib/grafana/plugins
+
+# Telegraf
+install_telegraf: true
+telegraf_bin: /usr/bin/telegraf
+telegraf_conf: /etc/telegraf/telegraf.conf
+telegraf_user: telegraf
+telegraf_group: telegraf
+
+# Supervisor log directory
+influx_log_dir: /var/log/influx

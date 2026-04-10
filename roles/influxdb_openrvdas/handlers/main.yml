@@ -1,0 +1,7 @@
+---
+- name: restart openrvdas services
+  supervisorctl:
+    name: "openrvdas:*"
+    state: restarted
+  ignore_errors: true
+  become: "{{ ansible_os_family != 'Darwin' }}"

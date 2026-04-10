@@ -1,0 +1,70 @@
+---
+# Bootstrap InfluxDB v2 via HTTP API (idempotent — /api/v2/setup returns 422 if already configured)
+
+- name: Ensure InfluxDB data directory exists
+  file:
+    path: "{{ influxdb_engine_path }}"
+    state: directory
+    owner: "{{ influxdb_user | default(omit) }}"
+    group: "{{ influxdb_group | default(omit) }}"
+    mode: "0750"
+  become: true
+  when: ansible_os_family != "Darwin"
+
+- name: Check if InfluxDB is already set up
+  uri:
+    url: "{{ influxdb_url }}/api/v2/setup"
+    method: GET
+    status_code: [200, 422]
+    timeout: 5
+  register: influx_setup_check
+  failed_when: false
+  ignore_errors: true
+
+- name: Start influxd temporarily for initial setup (if not running)
+  block:
+    - name: Start influxd in background
+      shell: |
+        nohup {{ influxdb_bin }} \
+          --bolt-path {{ influxdb_engine_path }}/influxd.bolt \
+          --engine-path {{ influxdb_engine_path }}/engine \
+          > /tmp/influxd-setup.log 2>&1 &
+        echo $!
+      register: influxd_pid
+      changed_when: false
+
+    - name: Wait for InfluxDB HTTP to be ready
+      uri:
+        url: "{{ influxdb_url }}/health"
+        status_code: 200
+        timeout: 5
+      register: influx_health
+      until: influx_health.status == 200
+      retries: 12
+      delay: 5
+
+  when: influx_setup_check.status is not defined or influx_setup_check.status not in [200, 422]
+  become: "{{ ansible_os_family != 'Darwin' }}"
+
+- name: Run InfluxDB initial setup via API
+  uri:
+    url: "{{ influxdb_url }}/api/v2/setup"
+    method: POST
+    body_format: json
+    body:
+      username: "{{ influxdb_admin_user | default('admin') }}"
+      password: "{{ influxdb_password }}"
+      token: "{{ influxdb_token }}"
+      org: "{{ influxdb_org }}"
+      bucket: "{{ influxdb_bucket }}"
+    status_code: [200, 201, 422]
+    timeout: 30
+  register: influx_setup_result
+  # 422 = already configured; treat as success
+  failed_when: influx_setup_result.status not in [200, 201, 422]
+
+- name: Stop temporary influxd if we started it
+  shell: "kill {{ influxd_pid.stdout | trim }} 2>/dev/null || true"
+  changed_when: false
+  when: influxd_pid is defined
+  become: "{{ ansible_os_family != 'Darwin' }}"

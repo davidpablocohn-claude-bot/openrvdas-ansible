@@ -1,0 +1,11 @@
+---
+- name: restart influxdb
+  supervisorctl:
+    name: influxdb
+    state: restarted
+  ignore_errors: true
+
+- name: reload supervisord
+  command: supervisorctl reread && supervisorctl update
+  changed_when: true
+  become: "{{ ansible_os_family != 'Darwin' }}"
