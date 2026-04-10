@@ -40,8 +40,8 @@ tcp_ports_to_open: []
 udp_ports_to_open: []
 
 # ── Simulator ─────────────────────────────────────────────────────────────────
-install_simulate_nbp: true  # install NBP1406 test data simulator
-run_simulate_nbp: true      # autostart the simulator on boot
+install_simulate_nbp: false  # install NBP1406 test data simulator
+run_simulate_nbp: false      # autostart the simulator on boot
 
 # ── Supervisord web interface ─────────────────────────────────────────────────
 supervisord_webinterface: false
