@@ -172,6 +172,80 @@ jobs:
           fi
           echo "OK: idempotent"
 
+  # ── Linux self-install: Ansible installs onto the runner itself (local connection) ─
+  test-self-install:
+    name: "Self-install / ubuntu-latest"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ansible and collections
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y ansible
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Write CI inventory
+        run: |
+          cat > inventory/ci-self.ini << 'HOSTS'
+          [openrvdas]
+          localhost ansible_connection=local ansible_python_interpreter=/usr/bin/python3
+
+          [ubuntu]
+          localhost
+          HOSTS
+
+      - name: Write host_vars
+        run: |
+          mkdir -p inventory/host_vars
+          cat > inventory/host_vars/localhost.yml << 'EOF'
+          ---
+          rvdas_hostname: rvdas-ci-self
+          install_root: /opt
+          rvdas_user: rvdas
+          rvdas_group: rvdas
+          openrvdas_repo: https://github.com/oceandatatools/openrvdas
+          openrvdas_branch: master
+          http_proxy: ""
+          nonssl_server_port: 80
+          ssl_server_port: 443
+          use_ssl: false
+          have_ssl_certificate: false
+          openrvdas_autostart: false
+          install_gui: true
+          install_firewalld: false
+          tcp_ports_to_open: []
+          udp_ports_to_open: []
+          install_simulate_nbp: false
+          run_simulate_nbp: false
+          supervisord_webinterface: false
+          supervisord_webinterface_auth: false
+          supervisord_webinterface_port: 9001
+          supervisord_webinterface_user: rvdas
+          python_version: "3"
+          python_bin: /usr/bin/python3
+          use_deadsnakes: "false"
+          EOF
+
+      - name: Set up vault secrets (test values)
+        run: cp vault/secrets.yml.example vault/secrets.yml
+
+      - name: Run playbook
+        run: ansible-playbook site.yml -i inventory/ci-self.ini
+
+      - name: Idempotency check
+        run: |
+          out=$(ansible-playbook site.yml -i inventory/ci-self.ini)
+          echo "$out"
+          changed=$(echo "$out" | grep -oP 'localhost\s*:.*changed=\K\d+' || echo 0)
+          echo "Changed tasks on second run: $changed"
+          if [ "${changed:-0}" -gt 0 ]; then
+            echo "FAIL: expected 0 changed tasks, got $changed"
+            exit 1
+          fi
+          echo "OK: idempotent"
+
   # ── macOS: native runner, Ansible connecting to localhost ─────────────────────
   test-macos:
     name: "macOS / macos-14"
