@@ -8,9 +8,11 @@
 #    or ~/openrvdas, since /opt requires root on macOS.
 #  - Homebrew cannot run as root; the packages role sets become: false for brew tasks.
 
-# Use the Ansible connecting user instead of creating a new system user
-rvdas_user: "{{ ansible_user_id }}"
-rvdas_group: "{{ ansible_user_id }}"
+# Use the Ansible connecting user instead of creating a new system user.
+# The play runs with become: true, so ansible_user_id resolves to root.
+# Use SUDO_USER to get the real (pre-sudo) user instead.
+rvdas_user: "{{ ansible_env.SUDO_USER | default(ansible_user_id) }}"
+rvdas_group: "{{ ansible_env.SUDO_USER | default(ansible_user_id) }}"
 rvdas_groups: []
 
 # Default to a user-writable location on macOS

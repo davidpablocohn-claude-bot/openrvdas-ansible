@@ -91,11 +91,18 @@ check_ansible
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+TERM_WIDTH="${COLUMNS:-$(tput cols 2>/dev/null || echo 75)}"
+
+hr() {
+    local char="${1:-#}"
+    printf '%*s\n' "$TERM_WIDTH" '' | tr ' ' "$char"
+}
+
 section() {
     echo ""
-    echo "###########################################################################"
+    hr '#'
     echo "# $1"
-    echo "###########################################################################"
+    hr '#'
 }
 
 # Prompt with a default value. Usage: ask VARNAME "Prompt text" "default"
@@ -231,7 +238,7 @@ EOF
 
 python_bin_for_os() {
     case "$1" in
-        ubuntu|debian)          echo "/usr/bin/python3.9" ;;
+        ubuntu|debian)          echo "/usr/bin/python3" ;;
         raspbian)               echo "/usr/bin/python3.11" ;;
         centos|rocky|alma)      echo "/usr/bin/python3.12" ;;
         void)                   echo "auto_silent" ;;
@@ -294,17 +301,25 @@ PYEOF
 load_prefs
 
 echo ""
-echo "==========================================="
+hr '='
 echo "  OpenRVDAS Interactive Installer"
-echo "==========================================="
+hr '='
 echo "  Press Enter to accept the value shown in [brackets]."
 
 # ── Target host ───────────────────────────────────────────────────────────────
 section "Target Host"
 
 echo "  (Use 'localhost' to install on this machine)"
-ask TARGET_HOST "Hostname or IP of target" "${PREF_TARGET_HOST:-}"
-ask ANSIBLE_USER "SSH user on target" "${PREF_ANSIBLE_USER:-root}"
+ask TARGET_HOST "Hostname or IP of target" "${PREF_TARGET_HOST:-localhost}"
+
+# On localhost/macOS, default the SSH user to the current user (root is disabled by default).
+if { [ "$TARGET_HOST" = "localhost" ] || [ "$TARGET_HOST" = "127.0.0.1" ] || [ "$TARGET_HOST" = "::1" ]; } \
+   && [ "$(uname -s)" = "Darwin" ]; then
+    DEFAULT_ANSIBLE_USER="${PREF_ANSIBLE_USER:-$(whoami)}"
+else
+    DEFAULT_ANSIBLE_USER="${PREF_ANSIBLE_USER:-root}"
+fi
+ask ANSIBLE_USER "SSH user on target" "$DEFAULT_ANSIBLE_USER"
 
 # Verify SSH connectivity before proceeding — try key auth first, fall back to password
 USE_SSH_PASSWORD="no"
@@ -357,26 +372,77 @@ fi
 
 # Check if become (sudo) password is needed
 ANSIBLE_BECOME_PASS=""
-if [ "$ANSIBLE_USER" != "root" ]; then
-    echo "  Checking sudo access for ${ANSIBLE_USER}..."
-    SUDO_OK=no
-    if [ "$TARGET_HOST" = "localhost" ] || [ "$TARGET_HOST" = "127.0.0.1" ] || [ "$TARGET_HOST" = "::1" ]; then
-        sudo -n true 2>/dev/null && SUDO_OK=yes || true
+IS_LOCAL=no
+RUN_ANSIBLE_VIA_SUDO=no
+if [ "$TARGET_HOST" = "localhost" ] || [ "$TARGET_HOST" = "127.0.0.1" ] || [ "$TARGET_HOST" = "::1" ]; then
+    IS_LOCAL=yes
+fi
+
+# On a local connection Ansible runs as the current user regardless of
+# ansible_user, so we always need to verify sudo access.  On a remote host
+# connecting as root means become is unnecessary.
+if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
+    NEED_PASS=yes
+    # Check if passwordless sudo is available
+    if [ "$IS_LOCAL" = "yes" ]; then
+        if [ "$(id -u)" -eq 0 ]; then
+            NEED_PASS=no
+        else
+            # Invalidate cached credentials first so this detects true NOPASSWD,
+            # not a still-valid sudo timestamp from a previous command.
+            sudo -k 2>/dev/null || true
+            sudo -n true 2>/dev/null && NEED_PASS=no || NEED_PASS=yes
+        fi
     else
         ssh_opts="-o StrictHostKeyChecking=no -o ConnectTimeout=10"
         if [ "$USE_SSH_PASSWORD" = "yes" ] && command -v sshpass &>/dev/null; then
             SSHPASS="$ANSIBLE_SSH_PASSWORD" sshpass -e ssh $ssh_opts \
-                "${ANSIBLE_USER}@${TARGET_HOST}" "sudo -n true" 2>/dev/null && SUDO_OK=yes || true
+                "${ANSIBLE_USER}@${TARGET_HOST}" "sudo -n true" 2>/dev/null && NEED_PASS=no || true
         else
-            ssh $ssh_opts "${ANSIBLE_USER}@${TARGET_HOST}" "sudo -n true" 2>/dev/null && SUDO_OK=yes || true
+            ssh $ssh_opts "${ANSIBLE_USER}@${TARGET_HOST}" "sudo -n true" 2>/dev/null && NEED_PASS=no || true
         fi
     fi
-    if [ "$SUDO_OK" = "no" ]; then
-        echo "  Passwordless sudo not available — a sudo password is required."
-        read -rsp "  Sudo (become) password: " ANSIBLE_BECOME_PASS; echo
+    if [ "$NEED_PASS" = "yes" ]; then
+        while true; do
+            read -rsp "  Sudo (become) password: " ANSIBLE_BECOME_PASS; echo
+            # Verify the password
+            if [ "$IS_LOCAL" = "yes" ]; then
+                if [ -z "$ANSIBLE_BECOME_PASS" ]; then
+                    echo "  Password cannot be blank."
+                    continue
+                fi
+                if printf '%s\n' "$ANSIBLE_BECOME_PASS" | sudo -k -S -p '' true 2>/dev/null; then
+                    echo "  Sudo password verified."
+                    break
+                fi
+            else
+                if [ "$USE_SSH_PASSWORD" = "yes" ] && command -v sshpass &>/dev/null; then
+                    if SSHPASS="$ANSIBLE_SSH_PASSWORD" sshpass -e ssh $ssh_opts \
+                        "${ANSIBLE_USER}@${TARGET_HOST}" \
+                        "printf '%s\n' '$ANSIBLE_BECOME_PASS' | sudo -S true" 2>/dev/null; then
+                        break
+                    fi
+                else
+                    if ssh $ssh_opts "${ANSIBLE_USER}@${TARGET_HOST}" \
+                        "printf '%s\n' '$ANSIBLE_BECOME_PASS' | sudo -S true" 2>/dev/null; then
+                        break
+                    fi
+                fi
+            fi
+            echo "  Incorrect password. Please try again."
+        done
     else
         echo "  Passwordless sudo available."
     fi
+fi
+
+if [ "$IS_LOCAL" = "yes" ] && [ "$(id -u)" -ne 0 ] && [ "$(uname -s)" != "Darwin" ]; then
+    # For localhost installs on Linux, execute Ansible itself via sudo and disable
+    # in-playbook become. This is more reliable than passing become passwords
+    # through Ansible's local connection.
+    # macOS is excluded: Ansible is typically installed via Homebrew as the current
+    # user, and sudo -S has different tty/policy behaviour on macOS.
+    RUN_ANSIBLE_VIA_SUDO=yes
 fi
 
 # Detect hostname and OS from the target machine
@@ -418,7 +484,11 @@ fi
 section "Installation"
 
 ask INSTALL_ROOT "Installation root directory" "${PREF_INSTALL_ROOT:-/opt}"
-ask RVDAS_USER "OpenRVDAS service user (Linux only)" "${PREF_RVDAS_USER:-rvdas}"
+if [ "$OS_TYPE" != "macos" ]; then
+    ask RVDAS_USER "OpenRVDAS service user (Linux only)" "${PREF_RVDAS_USER:-rvdas}"
+else
+    RVDAS_USER="${PREF_RVDAS_USER:-rvdas}"
+fi
 ask OPENRVDAS_REPO "Repository URL" "${PREF_OPENRVDAS_REPO:-https://github.com/oceandatatools/openrvdas}"
 ask OPENRVDAS_BRANCH "Branch to install" "${PREF_OPENRVDAS_BRANCH:-master}"
 ask HTTP_PROXY "HTTP proxy URL (blank for none)" "${PREF_HTTP_PROXY:-}"
@@ -499,20 +569,7 @@ else
     SUPERVISORD_WEBINTERFACE_USER="${PREF_SUPERVISORD_WEBINTERFACE_USER:-${RVDAS_USER}}"
 fi
 
-# ── Secrets ───────────────────────────────────────────────────────────────────
-section "Passwords"
-
-echo "  These will be stored encrypted in vault/secrets.yml."
-echo ""
-ask_password RVDAS_DATABASE_PASSWORD "OpenRVDAS/Django password"
-
-if [ "$SUPERVISORD_WEBINTERFACE_AUTH" = "yes" ]; then
-    ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
-else
-    SUPERVISORD_WEBINTERFACE_PASS=""
-fi
-
-# ── Vault password ────────────────────────────────────────────────────────────
+# ── Vault password (must come before secrets so we can decrypt) ────────────────
 section "Vault Password"
 
 echo "  The vault password protects vault/secrets.yml."
@@ -530,6 +587,49 @@ else
     printf '%s' "$NEW_VAULT_PASS" > "$VAULT_PASS_FILE"
     chmod 600 "$VAULT_PASS_FILE"
     echo "  Vault password saved to vault/.vault_pass (chmod 600)."
+fi
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+section "Passwords"
+
+# Try to load existing passwords from the vault
+EXISTING_RVDAS_DB_PASS=""
+EXISTING_SUPERVISOR_PASS=""
+if [ -f "$SCRIPT_DIR/vault/secrets.yml" ] && [ -f "$VAULT_PASS_FILE" ]; then
+    _decrypted="$(ansible-vault view "$SCRIPT_DIR/vault/secrets.yml" \
+        --vault-password-file "$VAULT_PASS_FILE" 2>/dev/null)" || _decrypted=""
+    if [ -n "$_decrypted" ]; then
+        EXISTING_RVDAS_DB_PASS="$(echo "$_decrypted" | grep '^rvdas_database_password:' | sed 's/^[^:]*: *//')"
+        EXISTING_SUPERVISOR_PASS="$(echo "$_decrypted" | grep '^supervisord_webinterface_pass:' | sed 's/^[^:]*: *//; s/^"//; s/"$//')"
+    fi
+    unset _decrypted
+fi
+
+if [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
+    echo "  Existing passwords found in vault/secrets.yml."
+    echo ""
+    ask_yn REUSE_PASSWORDS "Keep existing passwords?" "yes"
+    if [ "$REUSE_PASSWORDS" = "yes" ]; then
+        RVDAS_DATABASE_PASSWORD="$EXISTING_RVDAS_DB_PASS"
+        SUPERVISORD_WEBINTERFACE_PASS="$EXISTING_SUPERVISOR_PASS"
+    else
+        echo ""
+        ask_password RVDAS_DATABASE_PASSWORD "OpenRVDAS/Django password"
+        if [ "$SUPERVISORD_WEBINTERFACE_AUTH" = "yes" ]; then
+            ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
+        else
+            SUPERVISORD_WEBINTERFACE_PASS=""
+        fi
+    fi
+else
+    echo "  These will be stored encrypted in vault/secrets.yml."
+    echo ""
+    ask_password RVDAS_DATABASE_PASSWORD "OpenRVDAS/Django password"
+    if [ "$SUPERVISORD_WEBINTERFACE_AUTH" = "yes" ]; then
+        ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
+    else
+        SUPERVISORD_WEBINTERFACE_PASS=""
+    fi
 fi
 
 # ── Write host_vars ───────────────────────────────────────────────────────────
@@ -560,8 +660,18 @@ cat > "$HOST_VARS_FILE" <<EOF
 rvdas_hostname: ${RVDAS_HOSTNAME}
 
 install_root: ${INSTALL_ROOT}
+EOF
+
+# On macOS the rvdas_user/group are derived from ansible_user_id in
+# group_vars/macos.yml — don't override them in host_vars.
+if [ "$OS_TYPE" != "macos" ]; then
+    cat >> "$HOST_VARS_FILE" <<EOF
 rvdas_user: ${RVDAS_USER}
 rvdas_group: ${RVDAS_USER}
+EOF
+fi
+
+cat >> "$HOST_VARS_FILE" <<EOF
 
 openrvdas_repo: ${OPENRVDAS_REPO}
 openrvdas_branch: ${OPENRVDAS_BRANCH}
@@ -594,7 +704,8 @@ echo "  Wrote $HOST_VARS_FILE"
 # ── Write and encrypt vault/secrets.yml ───────────────────────────────────────
 SECRETS_TMP="$(mktemp)"
 EXTRA_VARS_TMP=""
-cleanup_tmps() { rm -f "$SECRETS_TMP" ${EXTRA_VARS_TMP:+"$EXTRA_VARS_TMP"}; }
+BECOME_PASS_FILE_TMP=""
+cleanup_tmps() { rm -f "$SECRETS_TMP" ${EXTRA_VARS_TMP:+"$EXTRA_VARS_TMP"} ${BECOME_PASS_FILE_TMP:+"$BECOME_PASS_FILE_TMP"}; }
 trap cleanup_tmps EXIT
 
 cat > "$SECRETS_TMP" <<EOF
@@ -617,14 +728,88 @@ echo "  Preferences saved to $PREFS_FILE"
 
 # ── Build extra-vars file for sensitive connection vars ───────────────────────
 ANSIBLE_EXTRA_ARGS=()
-if { [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ]; } || [ -n "$ANSIBLE_BECOME_PASS" ]; then
+ANSIBLE_ENV_ARGS=()
+ANSIBLE_BECOME_FILE_ARGS=()
+ANSIBLE_PRECHECK_BECOME_ARGS=(-b)
+ANSIBLE_CMD_PREFIX=()
+ANSIBLE_LOCAL_OVERRIDE_ARGS=()
+ANSIBLE_BIN="$(command -v ansible)"
+ANSIBLE_PLAYBOOK_BIN="$(command -v ansible-playbook)"
+if [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ]; then
     EXTRA_VARS_TMP="$(mktemp)"
     chmod 600 "$EXTRA_VARS_TMP"
-    [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ] && \
-        printf 'ansible_ssh_pass: %s\n' "$ANSIBLE_SSH_PASSWORD" >> "$EXTRA_VARS_TMP"
-    [ -n "$ANSIBLE_BECOME_PASS" ] && \
-        printf 'ansible_become_pass: %s\n' "$ANSIBLE_BECOME_PASS" >> "$EXTRA_VARS_TMP"
+    EXTRA_VARS_TMP="$EXTRA_VARS_TMP" \
+    USE_SSH_PASSWORD_VALUE="$USE_SSH_PASSWORD" \
+    ANSIBLE_SSH_PASS_VALUE="${ANSIBLE_SSH_PASSWORD:-}" \
+    python3 - <<'PYEOF'
+import json
+import os
+
+extra_vars = {}
+
+if os.environ.get("USE_SSH_PASSWORD_VALUE") == "yes" and os.environ.get("ANSIBLE_SSH_PASS_VALUE"):
+    extra_vars["ansible_ssh_pass"] = os.environ["ANSIBLE_SSH_PASS_VALUE"]
+
+with open(os.environ["EXTRA_VARS_TMP"], "w", encoding="utf-8") as f:
+    json.dump(extra_vars, f)
+PYEOF
     ANSIBLE_EXTRA_ARGS=("-e" "@${EXTRA_VARS_TMP}")
+fi
+
+if [ -n "${ANSIBLE_BECOME_PASS:-}" ]; then
+    BECOME_PASS_FILE_TMP="$(mktemp)"
+    chmod 600 "$BECOME_PASS_FILE_TMP"
+    printf '%s\n' "$ANSIBLE_BECOME_PASS" > "$BECOME_PASS_FILE_TMP"
+    ANSIBLE_BECOME_FILE_ARGS=("--become-password-file" "$BECOME_PASS_FILE_TMP")
+    ANSIBLE_ENV_ARGS+=("ANSIBLE_BECOME_FLAGS=-H -S")
+fi
+
+if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
+    ANSIBLE_CMD_PREFIX=(sudo -S -p '')
+    ANSIBLE_PRECHECK_BECOME_ARGS=()
+    ANSIBLE_BECOME_FILE_ARGS=()
+    ANSIBLE_ENV_ARGS=()
+    ANSIBLE_LOCAL_OVERRIDE_ARGS=("-e" "ansible_become=false")
+fi
+
+# Verify Ansible can actually use sudo/become before starting the full playbook.
+# Use raw+become so this check also works on hosts where Python bootstrap is needed.
+if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
+    echo "  Verifying Ansible sudo access..."
+    if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
+        if printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
+            env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_BIN" all \
+            -i inventory/hosts.ini \
+            --limit "$TARGET_HOST" \
+            -m raw -a "true" \
+            ${ANSIBLE_PRECHECK_BECOME_ARGS[@]+"${ANSIBLE_PRECHECK_BECOME_ARGS[@]}"} \
+            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+            -o \
+            -T 30 \
+            ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
+            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}; then
+            echo "  Ansible sudo access verified."
+        else
+            echo "  ERROR: Ansible sudo authentication failed for ${TARGET_HOST}." >&2
+            echo "  Please rerun configure_and_install.sh and re-enter the sudo password." >&2
+            exit 1
+        fi
+    elif env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_BIN" all \
+        -i inventory/hosts.ini \
+        --limit "$TARGET_HOST" \
+        -m raw -a "true" \
+        ${ANSIBLE_PRECHECK_BECOME_ARGS[@]+"${ANSIBLE_PRECHECK_BECOME_ARGS[@]}"} \
+        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+        -o \
+        -T 30 \
+        ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}; then
+        echo "  Ansible sudo access verified."
+    else
+        echo "  ERROR: Ansible sudo authentication failed for ${TARGET_HOST}." >&2
+        echo "  Please rerun configure_and_install.sh and re-enter the sudo password." >&2
+        exit 1
+    fi
 fi
 
 # ── Run playbook ──────────────────────────────────────────────────────────────
@@ -632,11 +817,25 @@ section "Running Ansible Playbook"
 echo ""
 
 cd "$SCRIPT_DIR"
-ansible-playbook site.yml \
-    -i inventory/hosts.ini \
-    --vault-password-file "$VAULT_PASS_FILE" \
-    --limit "$TARGET_HOST" \
-    ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+export ANSIBLE_DISPLAY_WIDTH="$TERM_WIDTH"
+if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
+    printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
+        env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" site.yml \
+        -i inventory/hosts.ini \
+        --vault-password-file "$VAULT_PASS_FILE" \
+        --limit "$TARGET_HOST" \
+        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+        ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+else
+    env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" site.yml \
+        -i inventory/hosts.ini \
+        --vault-password-file "$VAULT_PASS_FILE" \
+        --limit "$TARGET_HOST" \
+        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+        ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+fi
 
 # ── Smoke test ────────────────────────────────────────────────────────────────
 echo ""
@@ -644,9 +843,22 @@ ask_yn RUN_SMOKE_TEST "Run smoke test to verify the installation?" "yes"
 if [ "$RUN_SMOKE_TEST" = "yes" ]; then
     section "Running Smoke Test"
     echo ""
-    ansible-playbook smoke-test.yml \
-        -i inventory/hosts.ini \
-        --vault-password-file "$VAULT_PASS_FILE" \
-        --limit "$TARGET_HOST" \
-        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+    if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
+        printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
+            env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
+            -i inventory/hosts.ini \
+            --vault-password-file "$VAULT_PASS_FILE" \
+            --limit "$TARGET_HOST" \
+            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+            ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
+            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+    else
+        env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
+            -i inventory/hosts.ini \
+            --vault-password-file "$VAULT_PASS_FILE" \
+            --limit "$TARGET_HOST" \
+            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+            ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
+            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+    fi
 fi

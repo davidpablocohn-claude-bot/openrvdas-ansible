@@ -5,6 +5,17 @@
 # Ubuntu 20.04), and Ansible 2.12+ requires Python 3.9+ on managed nodes — the
 # two requirements are incompatible with the apt module.
 
+- name: Remove stale deadsnakes PPA files left by previous failed runs
+  ansible.builtin.shell: |
+    find /etc/apt/sources.list.d/ -name '*deadsnakes*' -delete || true
+    apt-get update -q 2>&1 | grep -q 'deadsnakes' && \
+      add-apt-repository -y -r ppa:deadsnakes/ppa 2>/dev/null || true
+  changed_when: false
+  failed_when: false
+  when:
+    - use_deadsnakes | default(true)
+    - ansible_facts['distribution'] == 'Ubuntu'
+
 - name: Update apt cache
   ansible.builtin.command: apt-get update -q
   changed_when: false
@@ -17,16 +28,61 @@
     DEBIAN_FRONTEND: noninteractive
   changed_when: false
 
+- name: Check if deadsnakes PPA supports this Ubuntu release
+  ansible.builtin.shell: |
+    python3 -c "
+    import urllib.request, urllib.error
+    try:
+        urllib.request.urlopen('https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu/dists/{{ ansible_facts["distribution_release"] }}/Release', timeout=10)
+        print('200')
+    except urllib.error.HTTPError as e:
+        print(str(e.code))
+    except Exception:
+        print('error')
+    "
+  register: deadsnakes_http_check
+  failed_when: false
+  changed_when: false
+  when:
+    - use_deadsnakes | default(true)
+    - ansible_facts['distribution'] == 'Ubuntu'
+
+- name: Set deadsnakes availability fact
+  ansible.builtin.set_fact:
+    deadsnakes_ppa_available: "{{ deadsnakes_http_check.stdout | default('404') == '200' }}"
+  when:
+    - use_deadsnakes | default(true)
+    - ansible_facts['distribution'] == 'Ubuntu'
+
 - name: Add deadsnakes PPA for Python {{ python_version }}
   ansible.builtin.command: add-apt-repository -y ppa:deadsnakes/ppa
   args:
-    creates: /etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-*.list
-  when: use_deadsnakes | default(true)
+    creates: "/etc/apt/sources.list.d/deadsnakes-ubuntu-ppa-{{ ansible_facts['distribution_release'] }}.sources"
+  when:
+    - use_deadsnakes | default(true)
+    - ansible_facts['distribution'] == 'Ubuntu'
+    - deadsnakes_ppa_available | default(false)
 
 - name: Update apt cache after adding PPA
   ansible.builtin.command: apt-get update -q
   changed_when: false
-  when: use_deadsnakes | default(true)
+  when:
+    - use_deadsnakes | default(true)
+    - ansible_facts['distribution'] == 'Ubuntu'
+    - deadsnakes_ppa_available | default(false)
+
+- name: Fall back to system Python when deadsnakes does not support this Ubuntu release
+  ansible.builtin.set_fact:
+    python_version: "3"
+    python_bin: /usr/bin/python3
+    python_packages:
+      - python3
+      - python3-venv
+      - python3-dev
+  when:
+    - use_deadsnakes | default(true)
+    - ansible_facts['distribution'] == 'Ubuntu'
+    - not (deadsnakes_ppa_available | default(false))
 
 - name: Install system packages
   ansible.builtin.command: >-

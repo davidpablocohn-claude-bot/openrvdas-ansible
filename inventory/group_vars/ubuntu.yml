@@ -34,6 +34,7 @@ system_packages:
   - libreadline-dev
   - libssl-dev
   - libsqlite3-dev
+  - libcrypt-dev
 
 python_packages:
   - "python{{ python_version }}"
