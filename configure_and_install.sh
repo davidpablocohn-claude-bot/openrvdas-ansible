@@ -287,6 +287,29 @@ def ensure_host_in_section(text, section, entry):
     text = section_pattern.sub(f'[{section}]\n{entry}', text, count=1)
     return text
 
+OS_GROUPS = {'ubuntu', 'debian', 'raspbian', 'centos', 'rocky', 'alma', 'void', 'macos'}
+
+def remove_host_from_section(text, section, hostname):
+    """Remove hostname from [section] if present."""
+    lines = text.splitlines(keepends=True)
+    in_section = False
+    for i, line in enumerate(lines):
+        if re.match(rf'^\[{re.escape(section)}\]', line):
+            in_section = True
+            continue
+        if in_section:
+            if line.startswith('['):
+                break
+            if line.strip() and line.split()[0] == hostname:
+                lines[i] = ''
+                return ''.join(lines)
+    return text
+
+# Remove host from all OS groups except the target one
+hostname = host.split()[0]
+for grp in OS_GROUPS - {os_type}:
+    content = remove_host_from_section(content, grp, hostname)
+
 content = ensure_host_in_section(content, 'openrvdas', host_entry)
 content = ensure_host_in_section(content, os_type, host)
 
@@ -794,7 +817,7 @@ if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
             echo "  Please rerun configure_and_install.sh and re-enter the sudo password." >&2
             exit 1
         fi
-    elif env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_BIN" all \
+    elif env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} ${ANSIBLE_CMD_PREFIX[@]+"${ANSIBLE_CMD_PREFIX[@]}"} "$ANSIBLE_BIN" all \
         -i inventory/hosts.ini \
         --limit "$TARGET_HOST" \
         -m raw -a "true" \
@@ -828,7 +851,7 @@ if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
         ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
         ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
 else
-    env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" site.yml \
+    env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} ${ANSIBLE_CMD_PREFIX[@]+"${ANSIBLE_CMD_PREFIX[@]}"} "$ANSIBLE_PLAYBOOK_BIN" site.yml \
         -i inventory/hosts.ini \
         --vault-password-file "$VAULT_PASS_FILE" \
         --limit "$TARGET_HOST" \
@@ -853,7 +876,7 @@ if [ "$RUN_SMOKE_TEST" = "yes" ]; then
             ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
             ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
     else
-        env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
+        env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} ${ANSIBLE_CMD_PREFIX[@]+"${ANSIBLE_CMD_PREFIX[@]}"} "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
             -i inventory/hosts.ini \
             --vault-password-file "$VAULT_PASS_FILE" \
             --limit "$TARGET_HOST" \
