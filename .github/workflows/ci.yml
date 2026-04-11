@@ -225,7 +225,7 @@ jobs:
           supervisord_webinterface_user: rvdas
           python_version: "3"
           python_bin: /usr/bin/python3
-          use_deadsnakes: "false"
+          use_deadsnakes: false
           EOF
 
       - name: Set up vault secrets (test values)
