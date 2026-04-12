@@ -31,7 +31,6 @@ system_packages:
   - git
   - nginx
   - supervisor
-  - openssh-server
   - build-essential
   - libreadline-dev
   - libssl-dev
