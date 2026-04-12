@@ -396,7 +396,6 @@ fi
 # Check if become (sudo) password is needed
 ANSIBLE_BECOME_PASS=""
 IS_LOCAL=no
-RUN_ANSIBLE_VIA_SUDO=no
 if [ "$TARGET_HOST" = "localhost" ] || [ "$TARGET_HOST" = "127.0.0.1" ] || [ "$TARGET_HOST" = "::1" ]; then
     IS_LOCAL=yes
 fi
@@ -457,15 +456,6 @@ if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
     else
         echo "  Passwordless sudo available."
     fi
-fi
-
-if [ "$IS_LOCAL" = "yes" ] && [ "$(id -u)" -ne 0 ] && [ "$(uname -s)" != "Darwin" ]; then
-    # For localhost installs on Linux, execute Ansible itself via sudo and disable
-    # in-playbook become. This is more reliable than passing become passwords
-    # through Ansible's local connection.
-    # macOS is excluded: Ansible is typically installed via Homebrew as the current
-    # user, and sudo -S has different tty/policy behaviour on macOS.
-    RUN_ANSIBLE_VIA_SUDO=yes
 fi
 
 # Detect hostname and OS from the target machine
@@ -754,8 +744,6 @@ ANSIBLE_EXTRA_ARGS=()
 ANSIBLE_ENV_ARGS=()
 ANSIBLE_BECOME_FILE_ARGS=()
 ANSIBLE_PRECHECK_BECOME_ARGS=(-b)
-ANSIBLE_CMD_PREFIX=()
-ANSIBLE_LOCAL_OVERRIDE_ARGS=()
 ANSIBLE_BIN="$(command -v ansible)"
 ANSIBLE_PLAYBOOK_BIN="$(command -v ansible-playbook)"
 if [ "$USE_SSH_PASSWORD" = "yes" ] && [ -n "$ANSIBLE_SSH_PASSWORD" ]; then
@@ -787,37 +775,11 @@ if [ -n "${ANSIBLE_BECOME_PASS:-}" ]; then
     ANSIBLE_ENV_ARGS+=("ANSIBLE_BECOME_FLAGS=-H -S")
 fi
 
-if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
-    ANSIBLE_CMD_PREFIX=(sudo -S -p '')
-    ANSIBLE_PRECHECK_BECOME_ARGS=()
-    ANSIBLE_BECOME_FILE_ARGS=()
-    ANSIBLE_ENV_ARGS=()
-    ANSIBLE_LOCAL_OVERRIDE_ARGS=("-e" "ansible_become=false")
-fi
-
 # Verify Ansible can actually use sudo/become before starting the full playbook.
 # Use raw+become so this check also works on hosts where Python bootstrap is needed.
 if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
     echo "  Verifying Ansible sudo access..."
-    if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
-        if printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
-            env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_BIN" all \
-            -i inventory/hosts.ini \
-            --limit "$TARGET_HOST" \
-            -m raw -a "true" \
-            ${ANSIBLE_PRECHECK_BECOME_ARGS[@]+"${ANSIBLE_PRECHECK_BECOME_ARGS[@]}"} \
-            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-            -o \
-            -T 30 \
-            ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
-            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}; then
-            echo "  Ansible sudo access verified."
-        else
-            echo "  ERROR: Ansible sudo authentication failed for ${TARGET_HOST}." >&2
-            echo "  Please rerun configure_and_install.sh and re-enter the sudo password." >&2
-            exit 1
-        fi
-    elif env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} ${ANSIBLE_CMD_PREFIX[@]+"${ANSIBLE_CMD_PREFIX[@]}"} "$ANSIBLE_BIN" all \
+    if env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_BIN" all \
         -i inventory/hosts.ini \
         --limit "$TARGET_HOST" \
         -m raw -a "true" \
@@ -825,7 +787,6 @@ if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
         ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
         -o \
         -T 30 \
-        ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
         ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}; then
         echo "  Ansible sudo access verified."
     else
@@ -841,24 +802,12 @@ echo ""
 
 cd "$SCRIPT_DIR"
 export ANSIBLE_DISPLAY_WIDTH="$TERM_WIDTH"
-if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
-    printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
-        env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" site.yml \
-        -i inventory/hosts.ini \
-        --vault-password-file "$VAULT_PASS_FILE" \
-        --limit "$TARGET_HOST" \
-        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-        ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
-        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
-else
-    env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} ${ANSIBLE_CMD_PREFIX[@]+"${ANSIBLE_CMD_PREFIX[@]}"} "$ANSIBLE_PLAYBOOK_BIN" site.yml \
-        -i inventory/hosts.ini \
-        --vault-password-file "$VAULT_PASS_FILE" \
-        --limit "$TARGET_HOST" \
-        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-        ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
-        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
-fi
+env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_PLAYBOOK_BIN" site.yml \
+    -i inventory/hosts.ini \
+    --vault-password-file "$VAULT_PASS_FILE" \
+    --limit "$TARGET_HOST" \
+    ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+    ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
 
 # ── Smoke test ────────────────────────────────────────────────────────────────
 echo ""
@@ -866,22 +815,10 @@ ask_yn RUN_SMOKE_TEST "Run smoke test to verify the installation?" "yes"
 if [ "$RUN_SMOKE_TEST" = "yes" ]; then
     section "Running Smoke Test"
     echo ""
-    if [ "$RUN_ANSIBLE_VIA_SUDO" = "yes" ]; then
-        printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
-            env "${ANSIBLE_ENV_ARGS[@]}" "${ANSIBLE_CMD_PREFIX[@]}" "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
-            -i inventory/hosts.ini \
-            --vault-password-file "$VAULT_PASS_FILE" \
-            --limit "$TARGET_HOST" \
-            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-            ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
-            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
-    else
-        env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} ${ANSIBLE_CMD_PREFIX[@]+"${ANSIBLE_CMD_PREFIX[@]}"} "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
-            -i inventory/hosts.ini \
-            --vault-password-file "$VAULT_PASS_FILE" \
-            --limit "$TARGET_HOST" \
-            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-            ${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]+"${ANSIBLE_LOCAL_OVERRIDE_ARGS[@]}"} \
-            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
-    fi
+    env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
+        -i inventory/hosts.ini \
+        --vault-password-file "$VAULT_PASS_FILE" \
+        --limit "$TARGET_HOST" \
+        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
 fi
