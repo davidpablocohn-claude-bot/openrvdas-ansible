@@ -56,13 +56,87 @@
   become: true
 
 # ── Enable and start ──────────────────────────────────────────────────────────
+
+# macOS: Homebrew supervisor runs as the current user, not root.
+# Ensure log and socket directories/files are user-writable.
+- name: Fix supervisord log file ownership (macOS)
+  ansible.builtin.file:
+    path: "{{ homebrew_prefix }}/var/log/supervisord.log"
+    owner: "{{ rvdas_user }}"
+    state: file
+  become: true
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Ensure supervisor socket directory exists and is user-writable (macOS)
+  ansible.builtin.file:
+    path: "{{ supervisor_sock | dirname }}"
+    state: directory
+    owner: "{{ rvdas_user }}"
+    mode: "0755"
+    recurse: true
+  become: true
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Remove stale supervisor socket before restart (macOS)
+  ansible.builtin.file:
+    path: "{{ supervisor_sock }}"
+    state: absent
+  become: true
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Kill any root-owned supervisord left over from previous installs (macOS)
+  ansible.builtin.shell:
+    cmd: "pkill -U 0 -f 'supervisord.*{{ supervisor_service_name }}' || true"
+  become: true
+  changed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Remove system-level supervisor launchd plist if present (macOS)
+  ansible.builtin.file:
+    path: /Library/LaunchDaemons/homebrew.mxcl.supervisor.plist
+    state: absent
+  become: true
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Unload system-level supervisor launchd service (macOS)
+  ansible.builtin.command:
+    cmd: launchctl bootout system/homebrew.mxcl.supervisor
+  become: true
+  failed_when: false
+  changed_when: false
+  when: ansible_facts['os_family'] == 'Darwin'
+
+# macOS: use `brew services` (launchd) — ansible.builtin.service does not
+# support Darwin.
+- name: Start supervisor via Homebrew services (macOS)
+  ansible.builtin.command:
+    cmd: "brew services restart {{ supervisor_service_name }}"
+  register: brew_svc_start
+  changed_when: "'Successfully' in brew_svc_start.stdout"
+  become: false
+  when: ansible_facts['os_family'] == 'Darwin'
+
+- name: Stop supervisor via Homebrew services (macOS, autostart disabled)
+  ansible.builtin.command:
+    cmd: "brew services stop {{ supervisor_service_name }}"
+  register: brew_svc_stop
+  changed_when: "'Successfully stopped' in brew_svc_stop.stdout"
+  failed_when: false
+  become: false
+  when:
+    - ansible_facts['os_family'] == 'Darwin'
+    - not openrvdas_autostart
+
+# Linux / other: use the standard service module.
 - name: Enable and start supervisor service
   ansible.builtin.service:
     name: "{{ supervisor_service_name }}"
     enabled: "{{ openrvdas_autostart }}"
     state: started
-  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  become: true
   failed_when: false
+  when: ansible_facts['os_family'] != 'Darwin'
 
 # On RHEL/Rocky in Docker (no systemd), `systemctl start supervisord` exits 0
 # but never actually starts the process.  Verify by checking for the socket.
@@ -70,13 +144,13 @@
   ansible.builtin.stat:
     path: "{{ supervisor_sock }}"
   register: supervisord_sock_stat
-  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  become: true
   when: ansible_facts['os_family'] != 'Darwin'
 
 # Start supervisord directly if the socket is absent (non-systemd container).
 - name: Start supervisord directly if socket is absent (non-systemd container)
   ansible.builtin.command: supervisord
-  become: "{{ ansible_facts['os_family'] != 'Darwin' }}"
+  become: true
   changed_when: true
   when:
     - ansible_facts['os_family'] != 'Darwin'

@@ -7,6 +7,23 @@
     group: "{{ rvdas_group }}"
     mode: "0755"
 
+- name: Create OpenRVDAS application directory
+  ansible.builtin.file:
+    path: "{{ install_root }}/openrvdas"
+    state: directory
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0755"
+
+- name: Fix OpenRVDAS directory ownership (recover from previous root-owned installs)
+  ansible.builtin.file:
+    path: "{{ install_root }}/openrvdas"
+    state: directory
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    recurse: true
+  changed_when: false
+
 - name: Create OpenRVDAS log directory
   ansible.builtin.file:
     path: /var/log/openrvdas
@@ -14,6 +31,7 @@
     owner: "{{ rvdas_user }}"
     group: "{{ rvdas_group }}"
     mode: "0755"
+    recurse: true
 
 - name: Create OpenRVDAS disk cache directory
   ansible.builtin.file:
