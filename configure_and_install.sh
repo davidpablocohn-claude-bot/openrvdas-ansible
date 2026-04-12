@@ -775,11 +775,41 @@ if [ -n "${ANSIBLE_BECOME_PASS:-}" ]; then
     ANSIBLE_ENV_ARGS+=("ANSIBLE_BECOME_FLAGS=-H -S")
 fi
 
+# On Linux localhost, Ansible's become module cannot reliably feed the sudo
+# password through the local connection plugin (no pty).  Work around this by
+# running ansible / ansible-playbook under sudo directly.  The binaries are
+# resolved to absolute paths above (via `command -v`), so sudo's secure_path
+# is irrelevant.  macOS is excluded because its sudo has different tty/policy
+# behaviour and --become-password-file works there.
+NEEDS_SUDO_WRAPPER=no
+if [ "$IS_LOCAL" = "yes" ] && [ -n "${ANSIBLE_BECOME_PASS:-}" ] && [ "$(uname -s)" != "Darwin" ]; then
+    NEEDS_SUDO_WRAPPER=yes
+    ANSIBLE_BECOME_FILE_ARGS=()
+    ANSIBLE_ENV_ARGS=()
+    ANSIBLE_PRECHECK_BECOME_ARGS=()
+fi
+
 # Verify Ansible can actually use sudo/become before starting the full playbook.
 # Use raw+become so this check also works on hosts where Python bootstrap is needed.
 if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
     echo "  Verifying Ansible sudo access..."
-    if env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_BIN" all \
+    if [ "$NEEDS_SUDO_WRAPPER" = "yes" ]; then
+        if printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
+            sudo -S -p '' "$ANSIBLE_BIN" all \
+            -i inventory/hosts.ini \
+            --limit "$TARGET_HOST" \
+            -m raw -a "true" \
+            -e "ansible_become=false" \
+            -o \
+            -T 30 \
+            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}; then
+            echo "  Ansible sudo access verified."
+        else
+            echo "  ERROR: Ansible sudo authentication failed for ${TARGET_HOST}." >&2
+            echo "  Please rerun configure_and_install.sh and re-enter the sudo password." >&2
+            exit 1
+        fi
+    elif env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_BIN" all \
         -i inventory/hosts.ini \
         --limit "$TARGET_HOST" \
         -m raw -a "true" \
@@ -802,12 +832,22 @@ echo ""
 
 cd "$SCRIPT_DIR"
 export ANSIBLE_DISPLAY_WIDTH="$TERM_WIDTH"
-env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_PLAYBOOK_BIN" site.yml \
-    -i inventory/hosts.ini \
-    --vault-password-file "$VAULT_PASS_FILE" \
-    --limit "$TARGET_HOST" \
-    ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-    ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+if [ "$NEEDS_SUDO_WRAPPER" = "yes" ]; then
+    printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
+        sudo -S -p '' "$ANSIBLE_PLAYBOOK_BIN" site.yml \
+        -i inventory/hosts.ini \
+        --vault-password-file "$VAULT_PASS_FILE" \
+        --limit "$TARGET_HOST" \
+        -e "ansible_become=false" \
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+else
+    env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_PLAYBOOK_BIN" site.yml \
+        -i inventory/hosts.ini \
+        --vault-password-file "$VAULT_PASS_FILE" \
+        --limit "$TARGET_HOST" \
+        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+fi
 
 # ── Smoke test ────────────────────────────────────────────────────────────────
 echo ""
@@ -815,10 +855,20 @@ ask_yn RUN_SMOKE_TEST "Run smoke test to verify the installation?" "yes"
 if [ "$RUN_SMOKE_TEST" = "yes" ]; then
     section "Running Smoke Test"
     echo ""
-    env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
-        -i inventory/hosts.ini \
-        --vault-password-file "$VAULT_PASS_FILE" \
-        --limit "$TARGET_HOST" \
-        ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
-        ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+    if [ "$NEEDS_SUDO_WRAPPER" = "yes" ]; then
+        printf '%s\n' "$ANSIBLE_BECOME_PASS" | \
+            sudo -S -p '' "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
+            -i inventory/hosts.ini \
+            --vault-password-file "$VAULT_PASS_FILE" \
+            --limit "$TARGET_HOST" \
+            -e "ansible_become=false" \
+            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+    else
+        env ${ANSIBLE_ENV_ARGS[@]+"${ANSIBLE_ENV_ARGS[@]}"} "$ANSIBLE_PLAYBOOK_BIN" smoke-test.yml \
+            -i inventory/hosts.ini \
+            --vault-password-file "$VAULT_PASS_FILE" \
+            --limit "$TARGET_HOST" \
+            ${ANSIBLE_BECOME_FILE_ARGS[@]+"${ANSIBLE_BECOME_FILE_ARGS[@]}"} \
+            ${ANSIBLE_EXTRA_ARGS[@]+"${ANSIBLE_EXTRA_ARGS[@]}"}
+    fi
 fi
