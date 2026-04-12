@@ -173,7 +173,7 @@ detect_remote_info() {
 
 python_bin_for_os() {
     case "$1" in
-        ubuntu|debian)          echo "/usr/bin/python3.9" ;;
+        ubuntu|debian)          echo "/usr/bin/python3" ;;
         raspbian)               echo "/usr/bin/python3.11" ;;
         centos|rocky|alma)      echo "/usr/bin/python3.12" ;;
         void)                   echo "auto_silent" ;;
