@@ -16,6 +16,21 @@
     - use_deadsnakes | default(true)
     - ansible_facts['distribution'] == 'Ubuntu'
 
+- name: Fix broken dpkg state from previous failed runs
+  ansible.builtin.shell: |
+    # If dpkg has half-configured packages, configure them now.
+    # Use policy-rc.d to prevent post-install scripts from trying to
+    # start/restart services (which fails on some VPS/cloud hosts).
+    if dpkg --audit 2>/dev/null | grep -q .; then
+      echo 'exit 101' > /usr/sbin/policy-rc.d
+      chmod +x /usr/sbin/policy-rc.d
+      dpkg --configure -a --force-confdef 2>/dev/null || true
+      rm -f /usr/sbin/policy-rc.d
+    fi
+  become: true
+  changed_when: false
+  failed_when: false
+
 - name: Update apt cache
   ansible.builtin.command: apt-get update -q
   changed_when: false
