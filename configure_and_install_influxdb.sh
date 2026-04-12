@@ -506,15 +506,30 @@ if [ -f "$SCRIPT_DIR/vault/secrets.yml" ]; then
 fi
 rm -f "$EXISTING_SECRETS_TMP"
 
-cat > "$SECRETS_TMP" <<EOF
----
-# Secrets — $(date)
-$([ -n "$EXISTING_RVDAS_DB_PASS" ] && echo "rvdas_database_password: ${EXISTING_RVDAS_DB_PASS}" || echo "# rvdas_database_password: (not set)")
-$([ -n "$EXISTING_SUPERVISORD_PASS" ] && echo "supervisord_webinterface_pass: \"${EXISTING_SUPERVISORD_PASS}\"" || echo "# supervisord_webinterface_pass: (not set)")
-influxdb_password: ${INFLUXDB_PASSWORD}
-influxdb_token: ${INFLUXDB_TOKEN}
-grafana_password: ${GRAFANA_PASSWORD}
-EOF
+EXISTING_RVDAS_DB_PASS="$EXISTING_RVDAS_DB_PASS" \
+EXISTING_SUPERVISORD_PASS="$EXISTING_SUPERVISORD_PASS" \
+INFLUXDB_PASSWORD="$INFLUXDB_PASSWORD" \
+INFLUXDB_TOKEN="$INFLUXDB_TOKEN" \
+GRAFANA_PASSWORD="$GRAFANA_PASSWORD" \
+python3 - > "$SECRETS_TMP" <<'PYEOF'
+import os
+
+def yq(v):
+    """YAML single-quoted string — safe for any value including : # { } [ ]"""
+    return "'" + v.replace("'", "''") + "'"
+
+lines = ["---", "# Secrets"]
+db = os.environ.get("EXISTING_RVDAS_DB_PASS", "")
+sv = os.environ.get("EXISTING_SUPERVISORD_PASS", "")
+if db:
+    lines.append(f"rvdas_database_password: {yq(db)}")
+if sv:
+    lines.append(f"supervisord_webinterface_pass: {yq(sv)}")
+lines.append(f"influxdb_password: {yq(os.environ['INFLUXDB_PASSWORD'])}")
+lines.append(f"influxdb_token: {yq(os.environ['INFLUXDB_TOKEN'])}")
+lines.append(f"grafana_password: {yq(os.environ['GRAFANA_PASSWORD'])}")
+print("\n".join(lines))
+PYEOF
 
 ansible-vault encrypt \
     --vault-password-file "$VAULT_PASS_FILE" \

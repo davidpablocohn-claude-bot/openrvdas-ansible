@@ -721,12 +721,23 @@ BECOME_PASS_FILE_TMP=""
 cleanup_tmps() { rm -f "$SECRETS_TMP" ${EXTRA_VARS_TMP:+"$EXTRA_VARS_TMP"} ${BECOME_PASS_FILE_TMP:+"$BECOME_PASS_FILE_TMP"}; }
 trap cleanup_tmps EXIT
 
-cat > "$SECRETS_TMP" <<EOF
----
-# OpenRVDAS secrets — $(date)
-rvdas_database_password: ${RVDAS_DATABASE_PASSWORD}
-supervisord_webinterface_pass: "${SUPERVISORD_WEBINTERFACE_PASS}"
-EOF
+RVDAS_DATABASE_PASSWORD="$RVDAS_DATABASE_PASSWORD" \
+SUPERVISORD_WEBINTERFACE_PASS="$SUPERVISORD_WEBINTERFACE_PASS" \
+python3 - > "$SECRETS_TMP" <<'PYEOF'
+import os
+
+def yq(v):
+    """YAML single-quoted string — safe for any value including : # { } [ ]"""
+    return "'" + v.replace("'", "''") + "'"
+
+lines = [
+    "---",
+    "# OpenRVDAS secrets",
+    f"rvdas_database_password: {yq(os.environ['RVDAS_DATABASE_PASSWORD'])}",
+    f"supervisord_webinterface_pass: {yq(os.environ['SUPERVISORD_WEBINTERFACE_PASS'])}",
+]
+print("\n".join(lines))
+PYEOF
 
 ansible-vault encrypt \
     --vault-password-file "$VAULT_PASS_FILE" \
