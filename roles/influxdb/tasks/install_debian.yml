@@ -1,39 +1,63 @@
 ---
-- name: Install apt-transport-https and curl
-  apt:
-    name:
-      - apt-transport-https
-      - curl
-      - gnupg
-    state: present
-    update_cache: true
+- name: Install apt-transport-https, curl, and gnupg
+  ansible.builtin.command: >-
+    apt-get install -y -q apt-transport-https curl gnupg
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: false
   become: true
 
-- name: Add InfluxDB GPG key
-  shell: |
-    curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key \
-      | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
+- name: Ensure /etc/apt/keyrings exists
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Remove stale compat keyring from previous failed runs
+  ansible.builtin.file:
+    path: /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
+    state: absent
+  become: true
+
+- name: Add InfluxDB GPG key (with fingerprint verification)
+  ansible.builtin.shell: |
+    set -e
+    TMP=$(mktemp)
+    curl -fsSL https://repos.influxdata.com/influxdata-archive.key -o "$TMP"
+    # Verify fingerprint before trusting
+    FINGERPRINT=$(gpg --with-fingerprint --with-colons "$TMP" 2>/dev/null \
+      | awk -F: '/^fpr/{print $10; exit}')
+    EXPECTED="24C975CBA61A024EE1B631787C3D57159FC2F927"
+    if [ "$FINGERPRINT" != "$EXPECTED" ]; then
+      echo "ERROR: GPG fingerprint mismatch: got $FINGERPRINT" >&2
+      rm -f "$TMP"
+      exit 1
+    fi
+    gpg --dearmor < "$TMP" > /etc/apt/keyrings/influxdata-archive.gpg
+    rm -f "$TMP"
   args:
-    creates: /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
+    creates: /etc/apt/keyrings/influxdata-archive.gpg
   become: true
 
 - name: Add InfluxDB apt repository
-  copy:
+  ansible.builtin.copy:
     dest: /etc/apt/sources.list.d/influxdata.list
-    content: "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main\n"
+    content: "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main\n"
     mode: "0644"
   become: true
   register: influx_repo
 
 - name: Update apt cache after adding repo
-  apt:
-    update_cache: true
+  ansible.builtin.command: apt-get update -q
+  changed_when: false
   become: true
   when: influx_repo.changed
 
 - name: Install influxdb2
-  apt:
-    name: influxdb2
-    state: present
+  ansible.builtin.command: apt-get install -y -q influxdb2
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  changed_when: false
   become: true
   notify: restart influxdb

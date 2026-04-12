@@ -66,5 +66,5 @@
 - name: Stop temporary influxd if we started it
   shell: "kill {{ influxd_pid.stdout | trim }} 2>/dev/null || true"
   changed_when: false
-  when: influxd_pid is defined
+  when: influxd_pid is defined and influxd_pid.stdout is defined
   become: "{{ ansible_os_family != 'Darwin' }}"

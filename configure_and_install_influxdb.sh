@@ -426,11 +426,25 @@ section "Passwords and Tokens"
 
 echo "  These will be stored encrypted in vault/secrets.yml."
 echo ""
-ask_password INFLUXDB_PASSWORD "InfluxDB admin password"
+while true; do
+    ask_password INFLUXDB_PASSWORD "InfluxDB admin password (8–72 characters)"
+    if [ ${#INFLUXDB_PASSWORD} -ge 8 ] && [ ${#INFLUXDB_PASSWORD} -le 72 ]; then
+        break
+    fi
+    echo "    Password must be between 8 and 72 characters. Please try again."
+done
 echo ""
 echo "  The InfluxDB API token is used by Telegraf, Grafana, and OpenRVDAS."
-echo "  Use a long random string (e.g. output of: openssl rand -hex 32)"
-ask_secret INFLUXDB_TOKEN "InfluxDB API token"
+echo ""
+ask_yn GENERATE_TOKEN "Generate a random API token automatically?" "yes"
+if [ "$GENERATE_TOKEN" = "yes" ]; then
+    INFLUXDB_TOKEN="$(openssl rand -hex 32)"
+    echo "  Generated token: $INFLUXDB_TOKEN"
+    echo "  (This will be stored encrypted in vault/secrets.yml)"
+else
+    echo "  Tip: openssl rand -hex 32"
+    ask_secret INFLUXDB_TOKEN "InfluxDB API token"
+fi
 if [ "$INSTALL_GRAFANA" = "yes" ]; then
     echo ""
     ask_password GRAFANA_PASSWORD "Grafana admin password"

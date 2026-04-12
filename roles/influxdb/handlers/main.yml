@@ -6,6 +6,6 @@
   ignore_errors: true
 
 - name: reload supervisord
-  command: supervisorctl reread && supervisorctl update
+  ansible.builtin.shell: supervisorctl reread && supervisorctl update
   changed_when: true
   become: "{{ ansible_os_family != 'Darwin' }}"

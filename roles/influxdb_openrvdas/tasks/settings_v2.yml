@@ -1,4 +1,15 @@
 ---
+- name: Ensure database/influxdb/__init__.py exists (required for Python import)
+  ansible.builtin.file:
+    path: "{{ install_root }}/openrvdas/database/influxdb/__init__.py"
+    state: touch
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+    modification_time: preserve
+    access_time: preserve
+  become: "{{ ansible_os_family != 'Darwin' }}"
+
 - name: Deploy InfluxDB v2 settings.py for OpenRVDAS
   template:
     src: settings_v2.py.j2
