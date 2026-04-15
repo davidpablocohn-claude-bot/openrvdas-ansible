@@ -507,20 +507,30 @@ cleanup_tmps() { rm -f "$SECRETS_TMP" ${EXTRA_VARS_TMP:+"$EXTRA_VARS_TMP"}; }
 trap cleanup_tmps EXIT
 
 # Decrypt existing secrets if present so we don't overwrite openrvdas secrets
-EXISTING_SECRETS_TMP="$(mktemp)"
 EXISTING_RVDAS_DB_PASS=""
+EXISTING_RVDAS_USER_PASS=""
 EXISTING_SUPERVISORD_PASS=""
 if [ -f "$SCRIPT_DIR/vault/secrets.yml" ]; then
-    ansible-vault decrypt \
-        --vault-password-file "$VAULT_PASS_FILE" \
-        --output "$EXISTING_SECRETS_TMP" \
-        "$SCRIPT_DIR/vault/secrets.yml" 2>/dev/null || true
-    EXISTING_RVDAS_DB_PASS=$(grep '^rvdas_database_password:' "$EXISTING_SECRETS_TMP" | awk '{print $2}' || true)
-    EXISTING_SUPERVISORD_PASS=$(grep '^supervisord_webinterface_pass:' "$EXISTING_SECRETS_TMP" | awk '{print $2}' || true)
+    _decrypted="$(ansible-vault view "$SCRIPT_DIR/vault/secrets.yml" \
+        --vault-password-file "$VAULT_PASS_FILE" 2>/dev/null)" || _decrypted=""
+    if [ -n "$_decrypted" ]; then
+        _parsed="$(echo "$_decrypted" | python3 -c "
+import sys, yaml
+data = yaml.safe_load(sys.stdin)
+print(data.get('rvdas_database_password', ''))
+print(data.get('supervisord_webinterface_pass', ''))
+print(data.get('rvdas_user_password', ''))
+" 2>/dev/null)" || _parsed=""
+        EXISTING_RVDAS_DB_PASS="$(echo "$_parsed" | sed -n '1p')"
+        EXISTING_SUPERVISORD_PASS="$(echo "$_parsed" | sed -n '2p')"
+        EXISTING_RVDAS_USER_PASS="$(echo "$_parsed" | sed -n '3p')"
+        unset _parsed
+    fi
+    unset _decrypted
 fi
-rm -f "$EXISTING_SECRETS_TMP"
 
 EXISTING_RVDAS_DB_PASS="$EXISTING_RVDAS_DB_PASS" \
+EXISTING_RVDAS_USER_PASS="$EXISTING_RVDAS_USER_PASS" \
 EXISTING_SUPERVISORD_PASS="$EXISTING_SUPERVISORD_PASS" \
 INFLUXDB_PASSWORD="$INFLUXDB_PASSWORD" \
 INFLUXDB_TOKEN="$INFLUXDB_TOKEN" \
@@ -534,9 +544,12 @@ def yq(v):
 
 lines = ["---", "# Secrets"]
 db = os.environ.get("EXISTING_RVDAS_DB_PASS", "")
+up = os.environ.get("EXISTING_RVDAS_USER_PASS", "")
 sv = os.environ.get("EXISTING_SUPERVISORD_PASS", "")
 if db:
     lines.append(f"rvdas_database_password: {yq(db)}")
+if up:
+    lines.append(f"rvdas_user_password: {yq(up)}")
 if sv:
     lines.append(f"supervisord_webinterface_pass: {yq(sv)}")
 lines.append(f"influxdb_password: {yq(os.environ['INFLUXDB_PASSWORD'])}")

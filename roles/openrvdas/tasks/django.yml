@@ -30,21 +30,19 @@
   when: install_gui
 
 - name: Create Django superuser (if not already present)
-  ansible.builtin.shell:
-    cmd: |
-      {{ install_root }}/openrvdas/venv/bin/python manage.py shell -c "
-      from django.contrib.auth import get_user_model
-      User = get_user_model()
-      if not User.objects.filter(username='{{ rvdas_user }}').exists():
-          User.objects.create_superuser('{{ rvdas_user }}', '', '{{ rvdas_database_password }}')
-          print('created')
-      else:
-          print('exists')
-      "
+  ansible.builtin.shell: |
+    {{ install_root }}/openrvdas/venv/bin/python manage.py createsuperuser \
+      --username "{{ rvdas_user }}" --email "" --noinput
+  args:
     chdir: "{{ install_root }}/openrvdas"
+  environment:
+    DJANGO_SUPERUSER_PASSWORD: "{{ rvdas_database_password }}"
   become: true
   become_user: "{{ rvdas_user }}"
   register: superuser_result
-  changed_when: "'created' in superuser_result.stdout"
+  changed_when: "'Superuser created' in superuser_result.stdout"
+  failed_when: >
+    superuser_result.rc != 0 and
+    'already taken' not in (superuser_result.stdout + superuser_result.stderr)
   no_log: true
   when: install_gui

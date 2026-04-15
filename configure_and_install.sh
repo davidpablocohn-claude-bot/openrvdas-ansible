@@ -608,12 +608,24 @@ section "Passwords"
 # Try to load existing passwords from the vault
 EXISTING_RVDAS_DB_PASS=""
 EXISTING_SUPERVISOR_PASS=""
+EXISTING_RVDAS_USER_PASS=""
 if [ -f "$SCRIPT_DIR/vault/secrets.yml" ] && [ -f "$VAULT_PASS_FILE" ]; then
     _decrypted="$(ansible-vault view "$SCRIPT_DIR/vault/secrets.yml" \
         --vault-password-file "$VAULT_PASS_FILE" 2>/dev/null)" || _decrypted=""
     if [ -n "$_decrypted" ]; then
-        EXISTING_RVDAS_DB_PASS="$(echo "$_decrypted" | grep '^rvdas_database_password:' | sed 's/^[^:]*: *//')"
-        EXISTING_SUPERVISOR_PASS="$(echo "$_decrypted" | grep '^supervisord_webinterface_pass:' | sed 's/^[^:]*: *//; s/^"//; s/"$//')"
+        # Use yaml.safe_load so YAML quoting is stripped correctly (avoids
+        # re-wrapping already-quoted values on subsequent runs)
+        _parsed="$(echo "$_decrypted" | python3 -c "
+import sys, yaml
+data = yaml.safe_load(sys.stdin)
+print(data.get('rvdas_database_password', ''))
+print(data.get('supervisord_webinterface_pass', ''))
+print(data.get('rvdas_user_password', ''))
+" 2>/dev/null)" || _parsed=""
+        EXISTING_RVDAS_DB_PASS="$(echo "$_parsed" | sed -n '1p')"
+        EXISTING_SUPERVISOR_PASS="$(echo "$_parsed" | sed -n '2p')"
+        EXISTING_RVDAS_USER_PASS="$(echo "$_parsed" | sed -n '3p')"
+        unset _parsed
     fi
     unset _decrypted
 fi
@@ -625,9 +637,11 @@ if [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
     if [ "$REUSE_PASSWORDS" = "yes" ]; then
         RVDAS_DATABASE_PASSWORD="$EXISTING_RVDAS_DB_PASS"
         SUPERVISORD_WEBINTERFACE_PASS="$EXISTING_SUPERVISOR_PASS"
+        RVDAS_USER_PASSWORD="$EXISTING_RVDAS_USER_PASS"
     else
         echo ""
         ask_password RVDAS_DATABASE_PASSWORD "OpenRVDAS/Django password"
+        ask_password RVDAS_USER_PASSWORD "Linux password for the '${RVDAS_USER}' system user"
         if [ "$SUPERVISORD_WEBINTERFACE_AUTH" = "yes" ]; then
             ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
         else
@@ -638,6 +652,7 @@ else
     echo "  These will be stored encrypted in vault/secrets.yml."
     echo ""
     ask_password RVDAS_DATABASE_PASSWORD "OpenRVDAS/Django password"
+    ask_password RVDAS_USER_PASSWORD "Linux password for the '${RVDAS_USER}' system user"
     if [ "$SUPERVISORD_WEBINTERFACE_AUTH" = "yes" ]; then
         ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
     else
@@ -722,6 +737,7 @@ cleanup_tmps() { rm -f "$SECRETS_TMP" ${EXTRA_VARS_TMP:+"$EXTRA_VARS_TMP"} ${BEC
 trap cleanup_tmps EXIT
 
 RVDAS_DATABASE_PASSWORD="$RVDAS_DATABASE_PASSWORD" \
+RVDAS_USER_PASSWORD="$RVDAS_USER_PASSWORD" \
 SUPERVISORD_WEBINTERFACE_PASS="$SUPERVISORD_WEBINTERFACE_PASS" \
 python3 - > "$SECRETS_TMP" <<'PYEOF'
 import os
@@ -734,6 +750,7 @@ lines = [
     "---",
     "# OpenRVDAS secrets",
     f"rvdas_database_password: {yq(os.environ['RVDAS_DATABASE_PASSWORD'])}",
+    f"rvdas_user_password: {yq(os.environ['RVDAS_USER_PASSWORD'])}",
     f"supervisord_webinterface_pass: {yq(os.environ['SUPERVISORD_WEBINTERFACE_PASS'])}",
 ]
 print("\n".join(lines))

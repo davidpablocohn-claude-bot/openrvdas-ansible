@@ -15,3 +15,18 @@
     system: true
     create_home: true
     comment: "OpenRVDAS service user"
+    password: "{{ rvdas_user_password | password_hash('sha512') }}"
+    update_password: always
+  when: (rvdas_user_password | default('')) != ''
+
+- name: Create rvdas system user (no password set)
+  ansible.builtin.user:
+    name: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    groups: "{{ rvdas_groups }}"
+    append: true
+    shell: /bin/bash
+    system: true
+    create_home: true
+    comment: "OpenRVDAS service user"
+  when: (rvdas_user_password | default('')) == ''
