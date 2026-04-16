@@ -3,6 +3,29 @@
   ansible.builtin.import_tasks: repo.yml
   tags: [openrvdas, repo]
 
+- name: Fix SELinux contexts for openrvdas directory
+  block:
+    - name: Check if SELinux is installed and enabled
+      ansible.builtin.command: getenforce
+      register: selinux_status
+      changed_when: false
+      failed_when: false
+
+    - name: Add SELinux context rule for openrvdas (ignore if already exists)
+      ansible.builtin.command: semanage fcontext -a -t admin_home_t "/opt/openrvdas(/.*)?"
+      become: true
+      when: selinux_status.stdout == "Enforcing"
+      failed_when: false
+      changed_when: '"already defined" not in semanage_result.stdout'
+      register: semanage_result
+
+    - name: Restore SELinux context for openrvdas directory tree
+      ansible.builtin.command: restorecon -R /opt/openrvdas
+      become: true
+      when: selinux_status.stdout == "Enforcing"
+      changed_when: false
+  tags: [openrvdas, selinux]
+
 - name: Set up Python virtual environment
   ansible.builtin.import_tasks: virtualenv.yml
   tags: [openrvdas, virtualenv]
