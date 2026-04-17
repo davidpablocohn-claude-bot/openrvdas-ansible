@@ -42,6 +42,10 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
   changed_when: false
+  register: apt_prereq_result
+  until: apt_prereq_result.rc == 0
+  retries: 3
+  delay: 15
 
 - name: Check if deadsnakes PPA supports this Ubuntu release
   ansible.builtin.shell: |
@@ -105,6 +109,10 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
   changed_when: false
+  register: apt_packages_result
+  until: apt_packages_result.rc == 0
+  retries: 3
+  delay: 15
 
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:
