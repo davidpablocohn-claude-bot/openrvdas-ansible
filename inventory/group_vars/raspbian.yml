@@ -21,6 +21,7 @@ etc_home: /etc
 rvdas_groups:
   - tty
   - dialout
+  - sudo
 
 # ── Python 3.11 (system, no deadsnakes) ──────────────────────────────────────
 python_version: "3.11"

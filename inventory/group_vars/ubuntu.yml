@@ -19,6 +19,7 @@ etc_home: /etc
 rvdas_groups:
   - tty
   - dialout
+  - sudo
 
 # ── Python 3.13 via deadsnakes PPA ────────────────────────────────────────────
 python_version: "3.13"
