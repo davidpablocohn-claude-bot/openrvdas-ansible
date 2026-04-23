@@ -19,3 +19,21 @@
     extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
   become: true
   become_user: "{{ rvdas_user }}"
+
+# Required when openrvdas uses pyproject.toml (dev branch and beyond): registers
+# the package in the venv so imports work without the sys.path hacks that were
+# removed in favour of proper packaging.
+- name: Check whether pyproject.toml is present
+  ansible.builtin.stat:
+    path: "{{ install_root }}/openrvdas/pyproject.toml"
+  register: _pyproject_toml
+
+- name: Install openrvdas package in editable mode (pyproject.toml)
+  ansible.builtin.pip:
+    name: "-e {{ install_root }}/openrvdas"
+    virtualenv: "{{ install_root }}/openrvdas/venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+    extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: _pyproject_toml.stat.exists
