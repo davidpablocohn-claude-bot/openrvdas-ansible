@@ -1,5 +1,12 @@
 # OpenRVDAS Ansible Playbook
 
+> **Experimental:** This is an unofficial, experimental approach to installing and maintaining
+> [OpenRVDAS](https://github.com/oceandatatools/openrvdas) and the InfluxDB suite via Ansible.
+> It is not the canonical installation method — the official installer is
+> [`install_openrvdas.sh`](https://github.com/oceandatatools/openrvdas/blob/master/utils/install_openrvdas.sh).
+> Use this project if you want reproducible, idempotent deployments or need to manage multiple
+> hosts, but expect rough edges and test thoroughly before relying on it in production.
+
 Ansible-based installer and operator for [OpenRVDAS](https://github.com/oceandatatools/openrvdas).
 Supports Ubuntu, Debian, Raspberry Pi OS, CentOS, Rocky Linux, AlmaLinux, Void Linux, and macOS.
 
