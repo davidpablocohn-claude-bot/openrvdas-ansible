@@ -497,6 +497,13 @@ fi
 section "Installation"
 
 ask INSTALL_ROOT "Installation root directory" "${PREF_INSTALL_ROOT:-/opt}"
+if [[ "$INSTALL_ROOT" == /home/* ]]; then
+    echo
+    echo "WARNING: Installing under a home directory can cause nginx 502 errors."
+    echo "nginx (www-data) cannot traverse home directories without world-execute"
+    echo "permission. The playbook will set this automatically, but /opt is safer."
+    echo
+fi
 if [ "$OS_TYPE" != "macos" ]; then
     ask RVDAS_USER "OpenRVDAS service user (Linux only)" "${PREF_RVDAS_USER:-rvdas}"
 else

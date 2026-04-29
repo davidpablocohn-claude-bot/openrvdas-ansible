@@ -8,3 +8,24 @@
     mode: "0644"
   notify: reload supervisor
   tags: [uwsgi]
+
+- name: Create uWSGI vassals directory
+  ansible.builtin.file:
+    path: /etc/uwsgi/vassals
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: ansible_os_family != "Darwin"
+  tags: [uwsgi]
+
+- name: Symlink openrvdas uwsgi config into vassals
+  ansible.builtin.file:
+    src: "{{ install_root }}/openrvdas/django_gui/openrvdas_uwsgi.ini"
+    dest: /etc/uwsgi/vassals/openrvdas_uwsgi.ini
+    state: link
+    force: true
+  become: true
+  when: ansible_os_family != "Darwin"
+  tags: [uwsgi]
