@@ -30,10 +30,10 @@
 
 - name: Install openrvdas package in editable mode (pyproject.toml)
   ansible.builtin.pip:
-    name: "-e {{ install_root }}/openrvdas"
+    name: "{{ install_root }}/openrvdas"
+    extra_args: "-e {{ '--proxy ' + http_proxy if http_proxy else '' }}"
     virtualenv: "{{ install_root }}/openrvdas/venv"
     virtualenv_command: "{{ python_bin }} -m venv"
-    extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
   become: true
   become_user: "{{ rvdas_user }}"
   when: _pyproject_toml.stat.exists
