@@ -116,4 +116,4 @@
       tags: [firewall]
       when: >-
         (ansible_facts['os_family'] == 'RedHat' and install_firewalld) or
-        (ansible_facts['os_family'] == 'Debian' and install_ufw)
+        (ansible_facts['os_family'] == 'Debian' and (install_ufw | default(false)))

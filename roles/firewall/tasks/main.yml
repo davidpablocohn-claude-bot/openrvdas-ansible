@@ -9,5 +9,5 @@
 
 - name: Configure ufw (Debian/Ubuntu)
   ansible.builtin.include_tasks: ufw.yml
-  when: ansible_facts['os_family'] == 'Debian' and install_ufw
+  when: ansible_facts['os_family'] == 'Debian' and (install_ufw | default(false))
   tags: [firewall]
