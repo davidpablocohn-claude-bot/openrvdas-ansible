@@ -139,6 +139,7 @@ jobs:
           openrvdas_autostart: false
           install_gui: true
           install_firewalld: false
+          install_ufw: false
           tcp_ports_to_open: []
           udp_ports_to_open: []
           install_simulate_nbp: false
@@ -215,6 +216,7 @@ jobs:
           openrvdas_autostart: false
           install_gui: true
           install_firewalld: false
+          install_ufw: false
           tcp_ports_to_open: []
           udp_ports_to_open: []
           install_simulate_nbp: false

@@ -63,6 +63,25 @@
         websocket_protocol: "{{ 'wss' if use_ssl else 'ws' }}"
       tags: always
 
+    - name: Prompt to install ufw on Ubuntu/Debian
+      ansible.builtin.pause:
+        prompt: |
+
+          The ufw firewall can be configured to restrict access to only the
+          ports used by OpenRVDAS on {{ inventory_hostname }}.
+          Install and configure ufw? [yes/no]
+      register: _ufw_prompt
+      when:
+        - ansible_facts['os_family'] == 'Debian'
+        - install_ufw is not defined
+      tags: always
+
+    - name: Set install_ufw from prompt answer
+      ansible.builtin.set_fact:
+        install_ufw: "{{ _ufw_prompt.user_input | lower == 'yes' }}"
+      when: not (_ufw_prompt.skipped | default(true))
+      tags: always
+
     - name: Validate SSL certificate paths when using provided certs
       ansible.builtin.assert:
         that:

@@ -34,8 +34,9 @@ ssl_key_location: "{{ install_root }}/openrvdas/openrvdas.key"
 openrvdas_autostart: true   # start OpenRVDAS services on boot
 install_gui: true           # install nginx + uWSGI web interface
 install_firewalld: false    # configure firewalld (CentOS/RHEL only)
-install_ufw: false          # configure ufw (Ubuntu/Debian only)
-ufw_force_reset: false      # set true to skip the "preserve rules?" prompt (CI / non-interactive)
+# install_ufw is intentionally unset here — site.yml prompts interactively on Ubuntu/Debian.
+# Set install_ufw: true/false in host_vars to skip the prompt, or pass -e install_ufw=true.
+# ufw_force_reset: true skips the "preserve existing rules?" prompt (useful in CI / non-interactive runs).
 
 # ── Additional firewall ports ─────────────────────────────────────────────────
 tcp_ports_to_open: []
