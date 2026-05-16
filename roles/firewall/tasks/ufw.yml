@@ -60,20 +60,19 @@
   community.general.ufw:
     direction: incoming
     policy: deny
-    default: true
   tags: [firewall]
 
 - name: Set default outgoing policy to allow
   community.general.ufw:
     direction: outgoing
     policy: allow
-    default: true
   tags: [firewall]
 
 - name: Allow SSH (prevent lockout)
   community.general.ufw:
     rule: allow
-    name: OpenSSH
+    port: "22"
+    proto: tcp
   tags: [firewall]
 
 - name: Open server port (TCP)
