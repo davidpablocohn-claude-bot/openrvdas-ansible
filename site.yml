@@ -65,11 +65,7 @@
 
     - name: Prompt to install ufw on Ubuntu/Debian
       ansible.builtin.pause:
-        prompt: |
-
-          The ufw firewall can be configured to restrict access to only the
-          ports used by OpenRVDAS on {{ inventory_hostname }}.
-          Install and configure ufw? [yes/no]
+        prompt: "The ufw firewall can be configured to restrict access to only the\nports used by OpenRVDAS on {{ inventory_hostname }}.\nInstall and configure ufw? [yes/no]"
       register: _ufw_prompt
       when:
         - ansible_facts['os_family'] == 'Debian'
