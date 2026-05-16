@@ -1,56 +1,13 @@
 ---
-# CentOS / RHEL / Rocky only - configure firewalld and SELinux
-# This role only runs when: ansible_os_family == 'RedHat' and install_firewalld
+# Dispatch to the appropriate firewall backend based on OS family and flags.
+# Controlled by: install_firewalld (RedHat) / install_ufw (Debian/Ubuntu)
 
-- name: Install firewalld
-  ansible.builtin.dnf:
-    name: firewalld
-    state: present
+- name: Configure firewalld (RedHat)
+  ansible.builtin.include_tasks: firewalld.yml
+  when: ansible_facts['os_family'] == 'RedHat' and install_firewalld
   tags: [firewall]
 
-- name: Enable and start firewalld
-  ansible.builtin.service:
-    name: firewalld
-    enabled: true
-    state: started
-  tags: [firewall]
-
-- name: Open server port (TCP)
-  ansible.posix.firewalld:
-    port: "{{ server_port }}/tcp"
-    permanent: true
-    state: enabled
-    immediate: true
-  tags: [firewall]
-
-- name: Open additional TCP ports
-  ansible.posix.firewalld:
-    port: "{{ item }}/tcp"
-    permanent: true
-    state: enabled
-    immediate: true
-  loop: "{{ tcp_ports_to_open }}"
-  tags: [firewall]
-
-- name: Open additional UDP ports
-  ansible.posix.firewalld:
-    port: "{{ item }}/udp"
-    permanent: true
-    state: enabled
-    immediate: true
-  loop: "{{ udp_ports_to_open }}"
-  tags: [firewall]
-
-- name: Enable SELinux boolean httpd_can_network_connect
-  ansible.posix.seboolean:
-    name: httpd_can_network_connect
-    state: true
-    persistent: true
-  tags: [firewall]
-
-- name: Enable SELinux boolean nis_enabled
-  ansible.posix.seboolean:
-    name: nis_enabled
-    state: true
-    persistent: true
+- name: Configure ufw (Debian/Ubuntu)
+  ansible.builtin.include_tasks: ufw.yml
+  when: ansible_facts['os_family'] == 'Debian' and install_ufw
   tags: [firewall]

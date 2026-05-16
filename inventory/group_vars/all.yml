@@ -34,8 +34,10 @@ ssl_key_location: "{{ install_root }}/openrvdas/openrvdas.key"
 openrvdas_autostart: true   # start OpenRVDAS services on boot
 install_gui: true           # install nginx + uWSGI web interface
 install_firewalld: false    # configure firewalld (CentOS/RHEL only)
+install_ufw: false          # configure ufw (Ubuntu/Debian only)
+ufw_force_reset: false      # set true to skip the "preserve rules?" prompt (CI / non-interactive)
 
-# ── Additional firewall ports (CentOS/RHEL only) ──────────────────────────────
+# ── Additional firewall ports ─────────────────────────────────────────────────
 tcp_ports_to_open: []
 udp_ports_to_open: []
 

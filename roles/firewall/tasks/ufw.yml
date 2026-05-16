@@ -1,0 +1,121 @@
+---
+# Ubuntu / Debian only - configure ufw
+
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+  tags: [firewall]
+
+# ── Detect existing rules ──────────────────────────────────────────────────────
+
+- name: Check for existing ufw rules
+  ansible.builtin.command: ufw status numbered
+  register: _ufw_status
+  changed_when: false
+  failed_when: false
+  tags: [firewall]
+
+- name: Set fact for whether existing rules were found
+  ansible.builtin.set_fact:
+    _ufw_has_rules: >-
+      {{ _ufw_status.rc == 0 and (_ufw_status.stdout is search('\[ *\d+\]')) }}
+  tags: [firewall]
+
+- name: Show existing ufw rules
+  ansible.builtin.debug:
+    msg: "{{ _ufw_status.stdout_lines }}"
+  when: _ufw_has_rules
+  tags: [firewall]
+
+- name: Prompt to confirm reset when existing rules detected
+  ansible.builtin.pause:
+    prompt: >-
+      The rules above will be replaced with the OpenRVDAS configuration.
+      Reset and continue? [yes/no]
+  register: _ufw_reset_prompt
+  when:
+    - _ufw_has_rules
+    - not (ufw_force_reset | default(false))
+  tags: [firewall]
+
+- name: Abort if user chose to preserve existing rules
+  ansible.builtin.fail:
+    msg: "Skipping ufw reset at user request. Rerun with ufw_force_reset=true to override."
+  when:
+    - _ufw_has_rules
+    - not (ufw_force_reset | default(false))
+    - (_ufw_reset_prompt.user_input | default('no') | lower) != 'yes'
+  tags: [firewall]
+
+# ── Configure rules ────────────────────────────────────────────────────────────
+
+- name: Reset ufw rules
+  community.general.ufw:
+    state: reset
+  tags: [firewall]
+
+- name: Set default incoming policy to deny
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+    default: true
+  tags: [firewall]
+
+- name: Set default outgoing policy to allow
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+    default: true
+  tags: [firewall]
+
+- name: Allow SSH (prevent lockout)
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+  tags: [firewall]
+
+- name: Open server port (TCP)
+  community.general.ufw:
+    rule: allow
+    port: "{{ server_port }}"
+    proto: tcp
+  tags: [firewall]
+
+- name: Open non-SSL port for HTTP→HTTPS redirect
+  community.general.ufw:
+    rule: allow
+    port: "{{ nonssl_server_port }}"
+    proto: tcp
+  when: use_ssl and nonssl_server_port | string != ssl_server_port | string
+  tags: [firewall]
+
+- name: Open supervisord web interface port
+  community.general.ufw:
+    rule: allow
+    port: "{{ supervisord_webinterface_port }}"
+    proto: tcp
+  when: supervisord_webinterface
+  tags: [firewall]
+
+- name: Open additional TCP ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ tcp_ports_to_open }}"
+  tags: [firewall]
+
+- name: Open additional UDP ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: udp
+  loop: "{{ udp_ports_to_open }}"
+  tags: [firewall]
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled
+  tags: [firewall]
