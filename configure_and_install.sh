@@ -670,15 +670,23 @@ if [ -f "$SCRIPT_DIR/vault/secrets.yml" ] && [ -f "$VAULT_PASS_FILE" ]; then
     _decrypted="$(ansible-vault view "$SCRIPT_DIR/vault/secrets.yml" \
         --vault-password-file "$VAULT_PASS_FILE" 2>/dev/null)" || _decrypted=""
     if [ -n "$_decrypted" ]; then
-        # Use yaml.safe_load so YAML quoting is stripped correctly (avoids
-        # re-wrapping already-quoted values on subsequent runs)
-        _parsed="$(echo "$_decrypted" | python3 -c "
-import sys, yaml
-data = yaml.safe_load(sys.stdin)
-print(data.get('rvdas_database_password', ''))
-print(data.get('supervisord_webinterface_pass', ''))
-print(data.get('rvdas_user_password', ''))
-" 2>/dev/null)" || _parsed=""
+        # Parse YAML using stdlib only (PyYAML may not be installed).
+        # The vault is always written by this script using single-quoted YAML
+        # values (the yq() helper), so we only need to handle that form:
+        #   key: 'value'   (with '' as the escape for a literal single quote)
+        _PY_PARSE="$(mktemp /tmp/rvdas_parse.XXXXXX.py)"
+cat > "$_PY_PARSE" <<'PYEOF'
+import sys, re
+content = sys.stdin.read()
+def extract(key):
+    m = re.search(r"^" + re.escape(key) + r": *'((?:[^']|'')*)'", content, re.MULTILINE)
+    return m.group(1).replace("''", "'") if m else ""
+print(extract("rvdas_database_password"))
+print(extract("supervisord_webinterface_pass"))
+print(extract("rvdas_user_password"))
+PYEOF
+        _parsed="$(printf '%s' "$_decrypted" | python3 "$_PY_PARSE" 2>/dev/null)" || _parsed=""
+        rm -f "$_PY_PARSE"
         EXISTING_RVDAS_DB_PASS="$(echo "$_parsed" | sed -n '1p')"
         EXISTING_SUPERVISOR_PASS="$(echo "$_parsed" | sed -n '2p')"
         EXISTING_RVDAS_USER_PASS="$(echo "$_parsed" | sed -n '3p')"
@@ -687,7 +695,18 @@ print(data.get('rvdas_user_password', ''))
     unset _decrypted
 fi
 
-if [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
+if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
+    if [ -z "$EXISTING_RVDAS_DB_PASS" ]; then
+        echo "  ERROR: --accept-defaults requires existing passwords in vault/secrets.yml." >&2
+        echo "  Could not load passwords — vault may be missing, unreadable, or use a" >&2
+        echo "  different vault password. Re-run without --accept-defaults." >&2
+        exit 1
+    fi
+    echo "  Using existing passwords from vault/secrets.yml."
+    RVDAS_DATABASE_PASSWORD="$EXISTING_RVDAS_DB_PASS"
+    SUPERVISORD_WEBINTERFACE_PASS="$EXISTING_SUPERVISOR_PASS"
+    RVDAS_USER_PASSWORD="$EXISTING_RVDAS_USER_PASS"
+elif [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
     echo "  Existing passwords found in vault/secrets.yml."
     echo ""
     ask_yn REUSE_PASSWORDS "Keep existing passwords?" "yes"
