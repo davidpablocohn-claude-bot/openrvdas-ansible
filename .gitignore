@@ -4,6 +4,16 @@ vault/secrets.yml
 
 # Generated preferences file from configure_and_install.sh
 .configure_preferences
+.configure_influx_preferences
+
+# Temporary files from local Docker test runs
+inventory/ci-local.ini
+
+# Old vault passwords
+vault/.vault_pass_old
+
+# Claude Code memory (local only)
+memory/
 
 # Per-host config files contain no secrets but may contain site-specific paths
 # — comment out the next line if you want to commit them
