@@ -7,8 +7,22 @@
 #
 # Re-running this script on the same host is safe — values from the previous
 # run are shown as defaults.
+#
+# Usage: configure_and_install.sh [--accept-defaults]
+#   --accept-defaults  Skip all prompts and use saved preferences as-is.
+#                      Requires: SSH key auth, passwordless sudo (or root),
+#                      and an existing vault/secrets.yml with passwords.
 
 set -euo pipefail
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+ACCEPT_DEFAULTS=no
+for _arg in "$@"; do
+    case "$_arg" in
+        --accept-defaults) ACCEPT_DEFAULTS=yes ;;
+        *) echo "Unknown argument: $_arg" >&2; echo "Usage: $0 [--accept-defaults]" >&2; exit 1 ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFS_FILE="$SCRIPT_DIR/.configure_preferences"
@@ -108,6 +122,11 @@ section() {
 # Prompt with a default value. Usage: ask VARNAME "Prompt text" "default"
 ask() {
     local varname="$1" prompt="$2" default="$3" value
+    if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
+        printf -v "$varname" '%s' "$default"
+        echo "  $prompt [$default]: $default"
+        return
+    fi
     read -rp "  $prompt [$default]: " value
     printf -v "$varname" '%s' "${value:-$default}"
 }
@@ -115,6 +134,11 @@ ask() {
 # Prompt yes/no. Usage: ask_yn VARNAME "Prompt text" "yes|no"
 ask_yn() {
     local varname="$1" prompt="$2" default="$3" value
+    if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
+        printf -v "$varname" '%s' "$default"
+        echo "  $prompt (yes/no) [$default]: $default"
+        return
+    fi
     while true; do
         read -rp "  $prompt (yes/no) [$default]: " value
         value="${value:-$default}"
@@ -129,6 +153,11 @@ ask_yn() {
 # Prompt for a password (no echo, confirmation). Usage: ask_password VARNAME "Prompt"
 ask_password() {
     local varname="$1" prompt="$2" value confirm
+    if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
+        echo "  ERROR: --accept-defaults requires an existing vault/secrets.yml with passwords." >&2
+        echo "  Re-run without --accept-defaults to set passwords interactively." >&2
+        exit 1
+    fi
     while true; do
         read -rsp "  $prompt: " value; echo
         read -rsp "  Confirm: " confirm; echo
@@ -220,6 +249,7 @@ PREF_SSL_KEY_LOCATION='${SSL_KEY_LOCATION}'
 PREF_OPENRVDAS_AUTOSTART='${OPENRVDAS_AUTOSTART}'
 PREF_INSTALL_GUI='${INSTALL_GUI}'
 PREF_INSTALL_FIREWALLD='${INSTALL_FIREWALLD}'
+PREF_INSTALL_UFW='${INSTALL_UFW}'
 PREF_TCP_PORTS_TO_OPEN='${TCP_PORTS_TO_OPEN}'
 PREF_UDP_PORTS_TO_OPEN='${UDP_PORTS_TO_OPEN}'
 PREF_INSTALL_SIMULATE_NBP='${INSTALL_SIMULATE_NBP}'
@@ -364,6 +394,10 @@ if [ "$TARGET_HOST" != "localhost" ] && [ "$TARGET_HOST" != "127.0.0.1" ] && [ "
         # Key auth failed — offer password fallback
         echo ""
         echo "  SSH key authentication failed for ${ANSIBLE_USER}@${TARGET_HOST}."
+        if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
+            echo "  ERROR: --accept-defaults requires SSH key authentication." >&2
+            exit 1
+        fi
         ask_yn TRY_PASSWORD "Try password authentication?" "${PREF_USE_SSH_PASSWORD:-no}"
         if [ "$TRY_PASSWORD" = "yes" ]; then
             read -rsp "  SSH password: " ANSIBLE_SSH_PASSWORD; echo
@@ -425,6 +459,10 @@ if [ "$IS_LOCAL" = "yes" ] || [ "$ANSIBLE_USER" != "root" ]; then
         fi
     fi
     if [ "$NEED_PASS" = "yes" ]; then
+        if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
+            echo "  ERROR: --accept-defaults requires passwordless sudo on the target." >&2
+            exit 1
+        fi
         while true; do
             read -rsp "  Sudo (become) password: " ANSIBLE_BECOME_PASS; echo
             # Verify the password
@@ -546,7 +584,18 @@ ask_yn INSTALL_GUI "Install nginx + uWSGI web interface?" "${PREF_INSTALL_GUI:-y
 
 if [ "$OS_TYPE" = "centos" ] || [ "$OS_TYPE" = "rocky" ] || [ "$OS_TYPE" = "alma" ]; then
     ask_yn INSTALL_FIREWALLD "Configure firewalld?" "${PREF_INSTALL_FIREWALLD:-no}"
+    INSTALL_UFW="no"
     if [ "$INSTALL_FIREWALLD" = "yes" ]; then
+        ask TCP_PORTS_TO_OPEN "Extra TCP ports to open (space-separated, blank for none)" "${PREF_TCP_PORTS_TO_OPEN:-}"
+        ask UDP_PORTS_TO_OPEN "Extra UDP ports to open (space-separated, blank for none)" "${PREF_UDP_PORTS_TO_OPEN:-}"
+    else
+        TCP_PORTS_TO_OPEN="${PREF_TCP_PORTS_TO_OPEN:-}"
+        UDP_PORTS_TO_OPEN="${PREF_UDP_PORTS_TO_OPEN:-}"
+    fi
+elif [ "$OS_TYPE" = "ubuntu" ] || [ "$OS_TYPE" = "debian" ] || [ "$OS_TYPE" = "raspbian" ]; then
+    ask_yn INSTALL_UFW "Configure ufw firewall?" "${PREF_INSTALL_UFW:-no}"
+    INSTALL_FIREWALLD="no"
+    if [ "$INSTALL_UFW" = "yes" ]; then
         ask TCP_PORTS_TO_OPEN "Extra TCP ports to open (space-separated, blank for none)" "${PREF_TCP_PORTS_TO_OPEN:-}"
         ask UDP_PORTS_TO_OPEN "Extra UDP ports to open (space-separated, blank for none)" "${PREF_UDP_PORTS_TO_OPEN:-}"
     else
@@ -555,6 +604,7 @@ if [ "$OS_TYPE" = "centos" ] || [ "$OS_TYPE" = "rocky" ] || [ "$OS_TYPE" = "alma
     fi
 else
     INSTALL_FIREWALLD="no"
+    INSTALL_UFW="no"
     TCP_PORTS_TO_OPEN="${PREF_TCP_PORTS_TO_OPEN:-}"
     UDP_PORTS_TO_OPEN="${PREF_UDP_PORTS_TO_OPEN:-}"
 fi
@@ -722,6 +772,7 @@ ssl_key_location: ${SSL_KEY_LOCATION}
 openrvdas_autostart: $(yn_to_bool "$OPENRVDAS_AUTOSTART")
 install_gui: $(yn_to_bool "$INSTALL_GUI")
 install_firewalld: $(yn_to_bool "$INSTALL_FIREWALLD")
+install_ufw: $(yn_to_bool "$INSTALL_UFW")
 tcp_ports_to_open: $(yaml_str_array "$TCP_PORTS_TO_OPEN")
 udp_ports_to_open: $(yaml_str_array "$UDP_PORTS_TO_OPEN")
 
