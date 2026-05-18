@@ -24,12 +24,3 @@
   notify: reload supervisor
   tags: [nginx]
 
-- name: Grant nginx world-execute on home directory so it can reach the uwsgi socket
-  ansible.builtin.file:
-    path: "{{ install_root | regex_replace('^(/home/[^/]+).*', '\\1') }}"
-    mode: "o+x"
-  become: true
-  when:
-    - ansible_os_family != "Darwin"
-    - install_root is match('^/home/')
-  tags: [nginx]

@@ -536,11 +536,13 @@ fi
 section "Installation"
 
 ask INSTALL_ROOT "Installation root directory" "${PREF_INSTALL_ROOT:-/opt}"
-if [[ "$INSTALL_ROOT" == /home/* ]]; then
+if [[ "$INSTALL_ROOT" != /opt* && "$INSTALL_ROOT" != /srv* && "$INSTALL_ROOT" != /var* && "$INSTALL_ROOT" != /usr/local* ]]; then
     echo
-    echo "WARNING: Installing under a home directory can cause nginx 502 errors."
-    echo "nginx (www-data) cannot traverse home directories without world-execute"
-    echo "permission. The playbook will set this automatically, but /opt is safer."
+    echo "WARNING: Installing outside a standard system directory (/opt, /srv, etc.)."
+    echo "nginx and supervisord must be able to traverse every directory in the path."
+    echo "Restrictive permissions (e.g. /home dirs are chmod 750 on Ubuntu 24.04,"
+    echo "/root is 700) will block access. The playbook will chmod o+x all parent"
+    echo "directories automatically, but /opt is safest for production vessel systems."
     echo
 fi
 if [ "$OS_TYPE" != "macos" ]; then

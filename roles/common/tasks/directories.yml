@@ -1,4 +1,23 @@
 ---
+# nginx (www-data) and supervisord must be able to traverse every directory
+# component of install_root. Standard locations (/opt, /srv, /var) are 755 by
+# default, but home directories are 750 on Ubuntu 24.04, /root is 700, and
+# arbitrary custom paths may have been created with restrictive permissions.
+# Ensure all parent components are world-executable (o+x is idempotent on
+# already-755 dirs and harmless on standard system directories).
+- name: Ensure all parent directories of install_root are world-traversable
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: "o+x"
+  loop: >-
+    {%- set parts = install_root.rstrip('/').split('/') -%}
+    {%- set result = [] -%}
+    {%- for i in range(2, parts | length) -%}
+      {%- set _ = result.append('/'.join(parts[:i])) -%}
+    {%- endfor -%}
+    {{ result }}
+  when: ansible_os_family != 'Darwin'
+
 - name: Create install root directory
   ansible.builtin.file:
     path: "{{ install_root }}"
