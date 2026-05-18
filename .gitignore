@@ -8,6 +8,8 @@ vault/secrets.yml
 
 # Temporary files from local Docker test runs
 inventory/ci-local.ini
+inventory/ci-test-runner.ini
+inventory/hosts-docker-test.ini
 
 # Old vault passwords
 vault/.vault_pass_old
