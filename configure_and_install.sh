@@ -250,6 +250,7 @@ PREF_OPENRVDAS_AUTOSTART='${OPENRVDAS_AUTOSTART}'
 PREF_INSTALL_GUI='${INSTALL_GUI}'
 PREF_INSTALL_FIREWALLD='${INSTALL_FIREWALLD}'
 PREF_INSTALL_UFW='${INSTALL_UFW}'
+PREF_UFW_LOCALHOST_ONLY='${UFW_LOCALHOST_ONLY}'
 PREF_TCP_PORTS_TO_OPEN='${TCP_PORTS_TO_OPEN}'
 PREF_UDP_PORTS_TO_OPEN='${UDP_PORTS_TO_OPEN}'
 PREF_INSTALL_SIMULATE_NBP='${INSTALL_SIMULATE_NBP}'
@@ -585,6 +586,8 @@ ask_yn INSTALL_GUI "Install nginx + uWSGI web interface?" "${PREF_INSTALL_GUI:-y
 if [ "$OS_TYPE" = "centos" ] || [ "$OS_TYPE" = "rocky" ] || [ "$OS_TYPE" = "alma" ]; then
     ask_yn INSTALL_FIREWALLD "Configure firewalld?" "${PREF_INSTALL_FIREWALLD:-no}"
     INSTALL_UFW="no"
+    UFW_LOCALHOST_ONLY="no"
+    UFW_OPENRVDAS_SOURCE="any"
     if [ "$INSTALL_FIREWALLD" = "yes" ]; then
         ask TCP_PORTS_TO_OPEN "Extra TCP ports to open (space-separated, blank for none)" "${PREF_TCP_PORTS_TO_OPEN:-}"
         ask UDP_PORTS_TO_OPEN "Extra UDP ports to open (space-separated, blank for none)" "${PREF_UDP_PORTS_TO_OPEN:-}"
@@ -596,15 +599,28 @@ elif [ "$OS_TYPE" = "ubuntu" ] || [ "$OS_TYPE" = "debian" ] || [ "$OS_TYPE" = "r
     ask_yn INSTALL_UFW "Configure ufw firewall?" "${PREF_INSTALL_UFW:-no}"
     INSTALL_FIREWALLD="no"
     if [ "$INSTALL_UFW" = "yes" ]; then
+        echo "  OpenRVDAS data ports (CachedDataServer 8766/tcp, instrument data 6224-6226/udp)"
+        echo "  will be opened automatically. On an isolated vessel LAN these can be open to"
+        echo "  all hosts; on a laptop or dev machine restrict them to localhost only."
+        ask_yn UFW_LOCALHOST_ONLY "Restrict OpenRVDAS data ports to localhost only?" "${PREF_UFW_LOCALHOST_ONLY:-no}"
+        if [ "$UFW_LOCALHOST_ONLY" = "yes" ]; then
+            UFW_OPENRVDAS_SOURCE="127.0.0.1"
+        else
+            UFW_OPENRVDAS_SOURCE="any"
+        fi
         ask TCP_PORTS_TO_OPEN "Extra TCP ports to open (space-separated, blank for none)" "${PREF_TCP_PORTS_TO_OPEN:-}"
         ask UDP_PORTS_TO_OPEN "Extra UDP ports to open (space-separated, blank for none)" "${PREF_UDP_PORTS_TO_OPEN:-}"
     else
+        UFW_LOCALHOST_ONLY="no"
+        UFW_OPENRVDAS_SOURCE="any"
         TCP_PORTS_TO_OPEN="${PREF_TCP_PORTS_TO_OPEN:-}"
         UDP_PORTS_TO_OPEN="${PREF_UDP_PORTS_TO_OPEN:-}"
     fi
 else
     INSTALL_FIREWALLD="no"
     INSTALL_UFW="no"
+    UFW_LOCALHOST_ONLY="no"
+    UFW_OPENRVDAS_SOURCE="any"
     TCP_PORTS_TO_OPEN="${PREF_TCP_PORTS_TO_OPEN:-}"
     UDP_PORTS_TO_OPEN="${PREF_UDP_PORTS_TO_OPEN:-}"
 fi
@@ -792,6 +808,7 @@ openrvdas_autostart: $(yn_to_bool "$OPENRVDAS_AUTOSTART")
 install_gui: $(yn_to_bool "$INSTALL_GUI")
 install_firewalld: $(yn_to_bool "$INSTALL_FIREWALLD")
 install_ufw: $(yn_to_bool "$INSTALL_UFW")
+ufw_openrvdas_source: "${UFW_OPENRVDAS_SOURCE}"
 tcp_ports_to_open: $(yaml_str_array "$TCP_PORTS_TO_OPEN")
 udp_ports_to_open: $(yaml_str_array "$UDP_PORTS_TO_OPEN")
 
