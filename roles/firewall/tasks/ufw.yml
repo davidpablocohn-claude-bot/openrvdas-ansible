@@ -114,19 +114,14 @@
   loop: "{{ udp_ports_to_open }}"
   tags: [firewall]
 
-# ── OpenRVDAS data ports ───────────────────────────────────────────────────────
-# CachedDataServer websocket and UDP instrument data ports.
+# ── OpenRVDAS UDP instrument data ports ───────────────────────────────────────
+# CachedDataServer (8766/tcp) is intentionally NOT opened here — browser access
+# goes through the nginx /cds-ws proxy and local logger processes use loopback.
+# UDP ports carry instrument data between loggers; they need to be reachable
+# from the network on a vessel LAN, or from localhost only on a dev machine.
 # ufw_openrvdas_source controls the allowed source:
-#   "any"       — open to all (appropriate on an isolated vessel LAN)
-#   "127.0.0.1" — localhost only (appropriate on a laptop / dev machine)
-
-- name: Open CachedDataServer port (TCP)
-  community.general.ufw:
-    rule: allow
-    port: "{{ openrvdas_data_port }}"
-    proto: tcp
-    from_ip: "{{ ufw_openrvdas_source }}"
-  tags: [firewall]
+#   "any"       — open to all (isolated vessel LAN)
+#   "127.0.0.1" — localhost only (laptop / dev machine)
 
 - name: Open OpenRVDAS UDP instrument data ports
   community.general.ufw:

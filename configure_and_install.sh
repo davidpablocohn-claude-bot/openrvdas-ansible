@@ -599,10 +599,11 @@ elif [ "$OS_TYPE" = "ubuntu" ] || [ "$OS_TYPE" = "debian" ] || [ "$OS_TYPE" = "r
     ask_yn INSTALL_UFW "Configure ufw firewall?" "${PREF_INSTALL_UFW:-no}"
     INSTALL_FIREWALLD="no"
     if [ "$INSTALL_UFW" = "yes" ]; then
-        echo "  OpenRVDAS data ports (CachedDataServer 8766/tcp, instrument data 6224-6226/udp)"
-        echo "  will be opened automatically. On an isolated vessel LAN these can be open to"
-        echo "  all hosts; on a laptop or dev machine restrict them to localhost only."
-        ask_yn UFW_LOCALHOST_ONLY "Restrict OpenRVDAS data ports to localhost only?" "${PREF_UFW_LOCALHOST_ONLY:-no}"
+        echo "  UDP instrument data ports (6224-6226) will be opened automatically."
+        echo "  CachedDataServer (8766) is accessed via the nginx proxy and is not opened."
+        echo "  On an isolated vessel LAN the UDP ports can be open to all hosts; on a"
+        echo "  laptop or dev machine restrict them to localhost only."
+        ask_yn UFW_LOCALHOST_ONLY "Restrict UDP instrument data ports to localhost only?" "${PREF_UFW_LOCALHOST_ONLY:-no}"
         if [ "$UFW_LOCALHOST_ONLY" = "yes" ]; then
             UFW_OPENRVDAS_SOURCE="127.0.0.1"
         else

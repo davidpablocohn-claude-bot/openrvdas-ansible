@@ -39,14 +39,16 @@ install_firewalld: false    # configure firewalld (CentOS/RHEL only)
 # ufw_force_reset: true skips the "preserve existing rules?" prompt (useful in CI / non-interactive runs).
 
 # ── OpenRVDAS data ports ──────────────────────────────────────────────────────
-# CachedDataServer websocket port (also used in the supervisor template).
+# CachedDataServer websocket port — used in supervisor templates only.
+# ufw does NOT open this port: browser access is proxied via nginx /cds-ws,
+# and logger processes connect via loopback.
 openrvdas_data_port: 8766
 # UDP ports used for instrument data broadcast between loggers.
 openrvdas_udp_ports: [6224, 6225, 6226]
 
-# ── ufw: OpenRVDAS data port source restriction ───────────────────────────────
-# "any"       — open to all (use on vessel LAN, isolated from internet)
-# "127.0.0.1" — localhost only (use on laptop / dev machine)
+# ── ufw: UDP instrument data port source restriction ─────────────────────────
+# "any"       — open to all (isolated vessel LAN)
+# "127.0.0.1" — localhost only (laptop / dev machine)
 ufw_openrvdas_source: "any"
 
 # ── Additional firewall ports ─────────────────────────────────────────────────
