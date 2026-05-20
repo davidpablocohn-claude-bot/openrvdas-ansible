@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ansible-playbook *)",
+      "Bash(ansible-vault *)",
+      "Bash(ansible *)",
+      "Bash(ansible-galaxy *)",
+      "Bash(docker run *)",
+      "Bash(docker exec *)",
+      "Bash(docker rm *)",
+      "Bash(docker pull *)",
+      "Bash(docker cp *)",
+      "Bash(cp vault/secrets.yml.example *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(bash -n *)",
+      "Bash(python3 *)",
+      "Bash(tee *)",
+      "Bash(curl *)",
+      "Bash(mkdir *)",
+      "Bash(printf *)",
+      "Bash(chmod *)",
+      "Write(inventory/ci-local.ini)",
+      "Write(inventory/host_vars/local-test.yml)"
+    ]
+  }
+}
