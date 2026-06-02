@@ -1,0 +1,54 @@
+---
+# React UI build tasks — only run when openrvdas_web_ui == 'react'
+
+- name: Run alembic database migrations
+  ansible.builtin.command:
+    cmd: "{{ install_root }}/openrvdas/web_backend/.venv/bin/alembic upgrade head"
+    chdir: "{{ install_root }}/openrvdas/web_backend"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  register: _alembic_result
+  changed_when: "'Running upgrade' in _alembic_result.stdout"
+  tags: [openrvdas, react]
+
+- name: Remove bootstrap admin credentials from web_backend/.env
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/web_backend/.env"
+    regexp: "^DEFAULT_ADMIN_[^\n]*\n"
+    replace: ""
+  tags: [openrvdas, react]
+
+- name: Read OpenRVDAS version from pyproject.toml
+  ansible.builtin.command:
+    cmd: >-
+      python3 -c
+      "import re; f=open('{{ install_root }}/openrvdas/pyproject.toml').read();
+      m=re.search(r'version\s*=\s*[\"\']([\w.]+)[\"\']',f); print(m.group(1) if m else 'dev')"
+  register: _openrvdas_version
+  changed_when: false
+  tags: [openrvdas, react]
+
+- name: Set VITE_OPENRVDAS_VERSION in web_frontend/.env
+  ansible.builtin.replace:
+    path: "{{ install_root }}/openrvdas/web_frontend/.env"
+    regexp: "^VITE_OPENRVDAS_VERSION=.*$"
+    replace: "VITE_OPENRVDAS_VERSION={{ _openrvdas_version.stdout | trim }}"
+  tags: [openrvdas, react]
+
+- name: Install web_frontend npm dependencies
+  ansible.builtin.command:
+    cmd: npm ci --silent
+    chdir: "{{ install_root }}/openrvdas/web_frontend"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  changed_when: true
+  tags: [openrvdas, react]
+
+- name: Build React frontend
+  ansible.builtin.command:
+    cmd: npm run build
+    chdir: "{{ install_root }}/openrvdas/web_frontend"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  changed_when: true
+  tags: [openrvdas, react]

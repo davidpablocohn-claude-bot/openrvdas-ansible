@@ -2,7 +2,7 @@
 ; Do not edit by hand; re-run the Ansible playbook to regenerate.
 
 [program:logger_manager]
-command={{ install_root }}/openrvdas/venv/bin/python server/logger_manager.py --database django --data_server_websocket :{{ openrvdas_data_port }} -v -V --no-console
+command={{ install_root }}/openrvdas/venv/bin/python server/logger_manager.py --database {{ 'fastapi' if openrvdas_web_ui == 'react' else 'django' }} --data_server_websocket :{{ openrvdas_data_port }} -v -V --no-console
 environment=PATH="{{ install_root }}/openrvdas/venv/bin:/usr/bin:/usr/local/bin"
 directory={{ install_root }}/openrvdas
 autostart={{ openrvdas_autostart | lower }}

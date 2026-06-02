@@ -37,3 +37,8 @@
 - name: Set up Django database
   ansible.builtin.import_tasks: django.yml
   tags: [openrvdas, django]
+
+- name: Build React frontend
+  ansible.builtin.import_tasks: react.yml
+  when: openrvdas_web_ui == 'react'
+  tags: [openrvdas, react]

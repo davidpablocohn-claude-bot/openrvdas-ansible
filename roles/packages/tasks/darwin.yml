@@ -8,3 +8,10 @@
     state: present
     update_homebrew: true
   become: false
+
+- name: Install Node.js for React UI build (macOS)
+  community.general.homebrew:
+    name: node
+    state: present
+  become: false
+  when: openrvdas_web_ui == 'react'

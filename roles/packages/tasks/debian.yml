@@ -114,6 +114,27 @@
   retries: 3
   delay: 15
 
+- name: Install Node.js 20 for React UI build (Debian/Ubuntu)
+  when: openrvdas_web_ui == 'react'
+  block:
+    - name: Install curl (required for NodeSource setup)
+      ansible.builtin.command: apt-get install -y curl
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+
+    - name: Register NodeSource Node.js 20 repository
+      ansible.builtin.shell: curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list
+      changed_when: false
+
+    - name: Install nodejs
+      ansible.builtin.command: apt-get install -y nodejs
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: false
+
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:
     name: nginx

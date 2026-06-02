@@ -1,9 +1,29 @@
 ---
-# Configure git safe.directory for FIPS-mode hosts that reject the default
-- name: Configure git safe directory (FIPS compatibility)
+# Configure git safe.directory for FIPS-mode hosts and git >=2.34 ownership checks.
+# Must run as rvdas_user because the git clone/submodule tasks also run as rvdas_user;
+# safe.directory in root's gitconfig has no effect on rvdas_user's git commands.
+- name: Configure git safe directory
   ansible.builtin.command:
-    cmd: "git config --global --add safe.directory {{ install_root }}/openrvdas"
+    cmd: "git config --global --add safe.directory {{ item }}"
+  loop: "{{ [install_root ~ '/openrvdas'] + ((openrvdas_web_ui == 'react') | ternary([install_root ~ '/openrvdas/web_backend', install_root ~ '/openrvdas/web_frontend'], [])) }}"
+  become: true
+  become_user: "{{ rvdas_user }}"
   changed_when: false
+
+# npm run build writes dist/ into web_frontend (a submodule). On re-runs, git
+# sees the submodule as dirty and refuses to update with force: false. Clean
+# untracked build output before the update so the repo stays updatable.
+- name: Clean React submodule build artifacts before git update
+  ansible.builtin.command:
+    cmd: git submodule foreach --recursive 'git clean -fd'
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when:
+    - openrvdas_web_ui == 'react'
+    - ansible_check_mode is not defined or not ansible_check_mode
+  changed_when: false
+  failed_when: false
 
 - name: Clone or update OpenRVDAS repository
   ansible.builtin.git:
@@ -18,3 +38,16 @@
     http_proxy: "{{ http_proxy }}"
     https_proxy: "{{ http_proxy }}"
   notify: restart supervisor
+
+- name: Initialize git submodules (React mode)
+  ansible.builtin.command:
+    cmd: git submodule update --init
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: openrvdas_web_ui == 'react'
+  register: _submodule_init
+  changed_when: _submodule_init.stdout != ''
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ http_proxy }}"
