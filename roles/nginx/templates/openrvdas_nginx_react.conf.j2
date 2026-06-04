@@ -53,6 +53,23 @@ http {
         root {{ install_root }}/openrvdas/web_frontend/dist;
         index index.html;
 
+        # FastAPI WebSocket endpoints — must be before the /api/ block (longer prefix wins)
+        location /api/v1/updates/ws {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+        }
+
+        location /api/v1/ws/ {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+            proxy_set_header Host $host;
+        }
+
         # FastAPI REST API
         location /api/ {
             proxy_pass http://127.0.0.1:8000;
