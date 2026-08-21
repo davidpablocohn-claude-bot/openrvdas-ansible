@@ -21,6 +21,11 @@
   failed_when: false
   ignore_errors: true
 
+# The temporary influxd must run as influxdb_user. Running it as root creates
+# influxd.bolt, influxd.sqlite and engine/ owned by root inside a data dir owned
+# by influxdb, after which the supervisor-managed influxd (user=influxdb, see
+# roles/influxdb/templates/influx.conf.j2) cannot open the bolt file and dies
+# with "unable to open boltdb: permission denied".
 - name: Start influxd temporarily for initial setup (if not running)
   block:
     - name: Start influxd in background
@@ -45,6 +50,7 @@
 
   when: influx_setup_check.status is not defined or influx_setup_check.status not in [200, 422]
   become: "{{ ansible_os_family != 'Darwin' }}"
+  become_user: "{{ (ansible_os_family != 'Darwin') | ternary(influxdb_user, omit) }}"
 
 - name: Run InfluxDB initial setup via API
   uri:
@@ -68,3 +74,15 @@
   changed_when: false
   when: influxd_pid is defined and influxd_pid.stdout is defined
   become: "{{ ansible_os_family != 'Darwin' }}"
+
+# Repairs hosts bootstrapped by an earlier version of this role, which ran the
+# temporary influxd as root and left root-owned files in the data directory.
+- name: Ensure InfluxDB data directory is owned by influxdb_user
+  ansible.builtin.file:
+    path: "{{ influxdb_engine_path }}"
+    state: directory
+    owner: "{{ influxdb_user }}"
+    group: "{{ influxdb_group }}"
+    recurse: true
+  become: true
+  when: ansible_os_family != "Darwin"
