@@ -13,3 +13,7 @@
 
 - name: Configure Grafana
   include_tasks: configure.yml
+
+- name: Configure Grafana→InfluxDB SELinux policy (RedHat/Rocky/Alma/CentOS)
+  include_tasks: selinux_redhat.yml
+  when: ansible_os_family == "RedHat"
