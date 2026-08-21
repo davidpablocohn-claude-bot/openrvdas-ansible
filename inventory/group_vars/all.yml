@@ -33,7 +33,7 @@ ssl_key_location: "{{ install_root }}/openrvdas/openrvdas.key"
 # ── Feature flags ─────────────────────────────────────────────────────────────
 openrvdas_autostart: true   # start OpenRVDAS services on boot
 install_gui: true           # install nginx web interface
-# Web UI backend: django (default), react (FastAPI/Vite — requires openrvdas_branch: dev), or none
+# Web UI backend: django (default), react (FastAPI/Vite), or none
 openrvdas_web_ui: django
 web_admin_user: admin       # React UI initial admin username (password in vault)
 web_admin_password: ""      # Override in vault/secrets.yml when openrvdas_web_ui: react

@@ -588,8 +588,8 @@ ask_yn OPENRVDAS_AUTOSTART "Start services automatically on boot?" "${PREF_OPENR
 ask_yn INSTALL_GUI "Install nginx web interface?" "${PREF_INSTALL_GUI:-yes}"
 if [ "$INSTALL_GUI" = "yes" ]; then
     echo "  Web UI backend options:"
-    echo "    django — classic Django/uWSGI interface (works with openrvdas master or dev)"
-    echo "    react  — new React/FastAPI interface (requires openrvdas_branch: dev)"
+    echo "    django — classic Django/uWSGI interface"
+    echo "    react  — new React/FastAPI interface"
     echo "    none   — install nginx only (no web backend)"
     while true; do
         ask OPENRVDAS_WEB_UI "Web UI backend (django/react/none)" "${PREF_OPENRVDAS_WEB_UI:-django}"
