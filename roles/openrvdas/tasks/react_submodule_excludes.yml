@@ -1,0 +1,47 @@
+---
+# Register the artifacts this role writes into the React submodules in each
+# submodule's info/exclude, so both the submodule and the superproject read as
+# clean while genuine modifications are still detected.
+#
+# Ansible's git module decides whether to refuse an update via has_local_mods
+# (ansible/modules/git.py:640), which runs `git status --porcelain` in the
+# superproject and filters out only '??' lines. Untracked content inside a
+# submodule does not appear as '??' — it appears as ' M web_backend' — so it
+# survives that filter and the update aborts with:
+#   "Local modifications exist in the destination: /opt/openrvdas (force=no)"
+# Excluding the artifacts from `git clean` is therefore not enough; they have to
+# be genuinely ignored.
+#
+# _exclude_phase names which include site is running, so the two copies are
+# distinguishable in play output.
+#
+# Included TWICE from repo.yml — see the comment at each include site. Writing
+# the excludes is idempotent, so whichever include fires first wins and the
+# other is a no-op.
+- name: Locate React submodule git directories ({{ _exclude_phase }})
+  ansible.builtin.stat:
+    path: "{{ install_root }}/openrvdas/.git/modules/{{ item.module }}"
+  loop:
+    - {module: web_backend, pattern: ".venv/"}
+    - {module: web_frontend, pattern: "openrvdas_nginx.conf"}
+  loop_control:
+    label: "{{ item.module }}"
+  register: _react_submodule_gitdirs
+  changed_when: false
+
+- name: Ignore role-generated artifacts inside the React submodules ({{ _exclude_phase }})
+  ansible.builtin.lineinfile:
+    path: >-
+      {{ install_root }}/openrvdas/.git/modules/{{ item.item.module }}/info/exclude
+    line: "{{ item.item.pattern }}"
+    create: true
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  loop: "{{ _react_submodule_gitdirs.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.module | default('') }}"
+  become: true
+  when:
+    - item.stat is defined
+    - item.stat.exists
