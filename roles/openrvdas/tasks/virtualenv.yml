@@ -32,6 +32,32 @@
   become: true
   become_user: "{{ rvdas_user }}"
 
+# Django 6.1 (released 2026-08-05) raised its minimum SQLite from 3.31 to 3.37.
+# RHEL 9 and rebuilds (Rocky/Alma/CentOS Stream 9) ship SQLite 3.34.1, and
+# openrvdas's utils/requirements.txt does not pin django — so a fresh install
+# there picks up 6.1 and every ORM call dies with:
+#   django.db.utils.NotSupportedError: SQLite 3.37 or later is required
+# Detect the SQLite that Python actually links against and hold Django at the
+# newest release supporting it. Done per-host rather than pinning django
+# globally, so platforms with a modern SQLite stay on current Django.
+- name: Detect SQLite version available to the virtual environment
+  ansible.builtin.command:
+    cmd: >-
+      {{ install_root }}/openrvdas/venv/bin/python -c
+      "import sqlite3; print(sqlite3.sqlite_version)"
+  register: _venv_sqlite_version
+  changed_when: false
+
+- name: Hold Django below 6.1 where SQLite is older than 3.37
+  ansible.builtin.pip:
+    name: "django<6.1"
+    virtualenv: "{{ install_root }}/openrvdas/venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+    extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: _venv_sqlite_version.stdout | trim is version('3.37', '<')
+
 # Required when openrvdas uses pyproject.toml (dev branch and beyond): registers
 # the package in the venv so imports work without the sys.path hacks that were
 # removed in favour of proper packaging.
