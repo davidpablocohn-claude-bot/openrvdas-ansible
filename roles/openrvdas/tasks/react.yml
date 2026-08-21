@@ -8,7 +8,8 @@
   become: true
   become_user: "{{ rvdas_user }}"
   register: _alembic_result
-  changed_when: "'Running upgrade' in _alembic_result.stdout"
+  # Alembic logs "Running upgrade ..." to stderr, not stdout.
+  changed_when: "'Running upgrade' in _alembic_result.stderr"
   tags: [openrvdas, react]
 
 - name: Remove bootstrap admin credentials from web_backend/.env

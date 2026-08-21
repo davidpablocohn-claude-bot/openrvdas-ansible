@@ -10,12 +10,21 @@
   become_user: "{{ rvdas_user }}"
   changed_when: false
 
-# npm run build writes dist/ into web_frontend (a submodule). On re-runs, git
-# sees the submodule as dirty and refuses to update with force: false. Clean
-# untracked build output before the update so the repo stays updatable.
+# We write two artifacts into the submodules that their own .gitignores do not
+# cover, so git sees the submodules as dirty and refuses to update with
+# force: false. Clean them before the update so the repo stays updatable.
+#
+# Both are excluded from the clean because they are inputs, not build output:
+#   .venv                — web_backend's venv (the submodule ignores venv/, not
+#                          .venv/); deleting it forces a full pip reinstall on
+#                          every run. Created by roles/openrvdas/tasks/virtualenv.yml.
+#   openrvdas_nginx.conf — rendered into web_frontend by roles/nginx; deleting it
+#                          re-renders and needlessly fires the supervisor reload
+#                          handler on every run.
+# dist/ and node_modules/ need no exclusion — web_frontend/.gitignore covers them.
 - name: Clean React submodule build artifacts before git update
   ansible.builtin.command:
-    cmd: git submodule foreach --recursive 'git clean -fd'
+    cmd: git submodule foreach --recursive 'git clean -fd -e .venv -e openrvdas_nginx.conf'
     chdir: "{{ install_root }}/openrvdas"
   become: true
   become_user: "{{ rvdas_user }}"
