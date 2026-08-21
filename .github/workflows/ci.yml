@@ -184,9 +184,12 @@ jobs:
         # detection), and React rebuilds the frontend on every run.
         run: |
           max=${{ matrix.max_changed || 1 }}
-          out=$(ansible-playbook site.yml -i inventory/ci-hosts.ini)
-          echo "$out"
-          changed=$(echo "$out" | grep -oP 'ci-test\s*:.*changed=\K\d+' || echo 0)
+          # Stream to the log as it runs rather than capturing into a variable:
+          # under `bash -e`, a failing playbook killed the step before the
+          # captured output was ever echoed, hiding the failing task entirely.
+          set -o pipefail
+          ansible-playbook site.yml -i inventory/ci-hosts.ini 2>&1 | tee /tmp/idempotency.log
+          changed=$(grep -oP 'ci-test\s*:.*changed=\K\d+' /tmp/idempotency.log || echo 0)
           echo "Changed tasks on second run: $changed (allowed: $max)"
           if [ "${changed:-0}" -gt "$max" ]; then
             echo "FAIL: expected at most $max changed tasks, got $changed"
