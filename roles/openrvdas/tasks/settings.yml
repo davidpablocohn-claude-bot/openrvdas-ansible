@@ -93,3 +93,32 @@
     regexp: "var WEBSOCKET_PORT = \\d+;"
     replace: "var WEBSOCKET_PORT = {{ server_port }};"
   failed_when: false
+
+# ── React mode: .env files ────────────────────────────────────────────────────
+- name: Check if web_backend/.env exists (React mode)
+  ansible.builtin.stat:
+    path: "{{ install_root }}/openrvdas/web_backend/.env"
+  register: _web_backend_env
+  when: openrvdas_web_ui == 'react'
+
+- name: Generate web_backend/.env from template (first install only)
+  ansible.builtin.template:
+    src: web_backend_env.j2
+    dest: "{{ install_root }}/openrvdas/web_backend/.env"
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0600"
+  when:
+    - openrvdas_web_ui == 'react'
+    - not _web_backend_env.stat.exists
+
+- name: Copy web_frontend/.env from .env.dist (first install only)
+  ansible.builtin.copy:
+    src: "{{ install_root }}/openrvdas/web_frontend/.env.dist"
+    dest: "{{ install_root }}/openrvdas/web_frontend/.env"
+    remote_src: true
+    force: false
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  when: openrvdas_web_ui == 'react'

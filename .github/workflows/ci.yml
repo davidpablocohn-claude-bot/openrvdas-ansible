@@ -24,6 +24,7 @@ jobs:
             use_deadsnakes: "false"
             # Bootstrap installs python3.9; system python3 is 3.8 which Ansible rejects
             ansible_interpreter: /usr/bin/python3.9
+            web_ui: django
           - name: ubuntu-22.04
             image: ubuntu:22.04
             group: ubuntu
@@ -31,6 +32,7 @@ jobs:
             python_bin: /usr/bin/python3.10
             use_deadsnakes: "false"
             ansible_interpreter: /usr/bin/python3
+            web_ui: django
           - name: ubuntu-24.04
             image: ubuntu:24.04
             group: ubuntu
@@ -38,6 +40,18 @@ jobs:
             python_bin: /usr/bin/python3.12
             use_deadsnakes: "false"
             ansible_interpreter: /usr/bin/python3
+            web_ui: django
+          - name: ubuntu-24.04-react
+            image: ubuntu:24.04
+            group: ubuntu
+            python_version: "3.12"
+            python_bin: /usr/bin/python3.12
+            use_deadsnakes: "false"
+            ansible_interpreter: /usr/bin/python3
+            web_ui: react
+            # npm ci and npm run build are changed_when: true by design (npm has
+            # no built-in changed detection), so React runs report 2 extra changes.
+            max_changed: 3
           - name: debian-12
             image: debian:12
             group: debian
@@ -45,6 +59,7 @@ jobs:
             python_bin: /usr/bin/python3.11
             use_deadsnakes: "false"
             ansible_interpreter: /usr/bin/python3
+            web_ui: django
           - name: rocky-9
             image: rockylinux:9
             group: rocky
@@ -52,6 +67,7 @@ jobs:
             python_bin: /usr/bin/python3.12
             use_deadsnakes: "false"
             ansible_interpreter: /usr/bin/python3
+            web_ui: django
           - name: almalinux-9
             image: almalinux:9
             group: alma
@@ -59,6 +75,7 @@ jobs:
             python_bin: /usr/bin/python3.12
             use_deadsnakes: "false"
             ansible_interpreter: /usr/bin/python3
+            web_ui: django
           - name: void
             image: ghcr.io/void-linux/void-linux:latest-full-x86_64
             group: void
@@ -66,6 +83,7 @@ jobs:
             python_bin: /usr/bin/python3
             use_deadsnakes: "false"
             ansible_interpreter: /usr/bin/python3
+            web_ui: django
 
     steps:
       - uses: actions/checkout@v4
@@ -138,6 +156,7 @@ jobs:
           ssl_key_location: /opt/openrvdas/openrvdas.key
           openrvdas_autostart: false
           install_gui: true
+          openrvdas_web_ui: ${{ matrix.web_ui }}
           install_firewalld: false
           install_ufw: false
           tcp_ports_to_open: []
@@ -160,15 +179,20 @@ jobs:
         run: ansible-playbook site.yml -i inventory/ci-hosts.ini
 
       - name: Idempotency check (second run)
-        # Allow up to 1 changed task: Void Linux pip-installs supervisor with
-        # changed_when: true by design (pip has no built-in changed detection).
+        # Allow up to max_changed (default 1): Void Linux pip-installs supervisor
+        # with changed_when: true by design (pip has no built-in changed
+        # detection), and React rebuilds the frontend on every run.
         run: |
-          out=$(ansible-playbook site.yml -i inventory/ci-hosts.ini)
-          echo "$out"
-          changed=$(echo "$out" | grep -oP 'ci-test\s*:.*changed=\K\d+' || echo 0)
-          echo "Changed tasks on second run: $changed"
-          if [ "${changed:-0}" -gt 1 ]; then
-            echo "FAIL: expected 0 or 1 changed tasks, got $changed"
+          max=${{ matrix.max_changed || 1 }}
+          # Stream to the log as it runs rather than capturing into a variable:
+          # under `bash -e`, a failing playbook killed the step before the
+          # captured output was ever echoed, hiding the failing task entirely.
+          set -o pipefail
+          ansible-playbook site.yml -i inventory/ci-hosts.ini 2>&1 | tee /tmp/idempotency.log
+          changed=$(grep -oP 'ci-test\s*:.*changed=\K\d+' /tmp/idempotency.log || echo 0)
+          echo "Changed tasks on second run: $changed (allowed: $max)"
+          if [ "${changed:-0}" -gt "$max" ]; then
+            echo "FAIL: expected at most $max changed tasks, got $changed"
             exit 1
           fi
           echo "OK: idempotent"

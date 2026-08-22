@@ -35,6 +35,32 @@
     src: openrvdas_django.conf.j2
     dest: "{{ supervisor_conf_dir }}/openrvdas_django.{{ supervisor_conf_suffix }}"
     mode: "0644"
+  when: openrvdas_web_ui != 'react'
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Remove Django GUI supervisor config (React mode)
+  ansible.builtin.file:
+    path: "{{ supervisor_conf_dir }}/openrvdas_django.{{ supervisor_conf_suffix }}"
+    state: absent
+  when: openrvdas_web_ui == 'react'
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Render React UI supervisor config
+  ansible.builtin.template:
+    src: openrvdas_react.conf.j2
+    dest: "{{ supervisor_conf_dir }}/openrvdas_react.{{ supervisor_conf_suffix }}"
+    mode: "0644"
+  when: openrvdas_web_ui == 'react'
+  notify: reload supervisor
+  tags: [supervisor]
+
+- name: Remove React UI supervisor config (Django mode)
+  ansible.builtin.file:
+    path: "{{ supervisor_conf_dir }}/openrvdas_react.{{ supervisor_conf_suffix }}"
+    state: absent
+  when: openrvdas_web_ui != 'react'
   notify: reload supervisor
   tags: [supervisor]
 

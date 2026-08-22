@@ -28,7 +28,14 @@ command={{ grafana_bin }}
 {% if ansible_os_family != "Darwin" %}
 user={{ grafana_user }}
 {% endif %}
-environment=GF_SECURITY_ADMIN_PASSWORD="{{ grafana_password }}"
+; The Debian/RPM grafana packages ship grafana.ini with paths.data commented out
+; and rely on systemd to supply GF_PATHS_*. Under supervisor nothing sets them,
+; so grafana resolves paths.data relative to --homepath (/usr/share/grafana/data,
+; root-owned) and dies with "permission denied" creating grafana.db. Point it at
+; the directories roles/grafana/tasks/configure.yml creates. GF_PATHS_PROVISIONING
+; is deliberately NOT set: the InfluxDB datasource is provisioned into
+; {{ '{{ grafana_home }}' }}/conf/provisioning, which is where grafana already looks.
+environment=GF_SECURITY_ADMIN_PASSWORD="{{ grafana_password }}",GF_PATHS_DATA="{{ grafana_data }}",GF_PATHS_LOGS="{{ grafana_log }}",GF_PATHS_PLUGINS="{{ grafana_plugins }}"
 autostart=true
 autorestart=true
 startretries=3

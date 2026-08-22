@@ -1,9 +1,49 @@
 ---
-# Configure git safe.directory for FIPS-mode hosts that reject the default
-- name: Configure git safe directory (FIPS compatibility)
+# Configure git safe.directory for FIPS-mode hosts and git >=2.34 ownership checks.
+# Must run as rvdas_user because the git clone/submodule tasks also run as rvdas_user;
+# safe.directory in root's gitconfig has no effect on rvdas_user's git commands.
+- name: Configure git safe directory
   ansible.builtin.command:
-    cmd: "git config --global --add safe.directory {{ install_root }}/openrvdas"
+    cmd: "git config --global --add safe.directory {{ item }}"
+  loop: "{{ [install_root ~ '/openrvdas'] + ((openrvdas_web_ui == 'react') | ternary([install_root ~ '/openrvdas/web_backend', install_root ~ '/openrvdas/web_frontend'], [])) }}"
+  become: true
+  become_user: "{{ rvdas_user }}"
   changed_when: false
+
+# We write two artifacts into the submodules that their own .gitignores do not
+# cover, so git sees the submodules as dirty and refuses to update with
+# force: false. Clean them before the update so the repo stays updatable.
+#
+# Both are excluded from the clean because they are inputs, not build output:
+#   .venv                — web_backend's venv (the submodule ignores venv/, not
+#                          .venv/); deleting it forces a full pip reinstall on
+#                          every run. Created by roles/openrvdas/tasks/virtualenv.yml.
+#   openrvdas_nginx.conf — rendered into web_frontend by roles/nginx; deleting it
+#                          re-renders and needlessly fires the supervisor reload
+#                          handler on every run.
+# dist/ and node_modules/ need no exclusion — web_frontend/.gitignore covers them.
+- name: Clean React submodule build artifacts before git update
+  ansible.builtin.command:
+    cmd: git submodule foreach --recursive 'git clean -fd -e .venv -e openrvdas_nginx.conf'
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when:
+    - openrvdas_web_ui == 'react'
+    - ansible_check_mode is not defined or not ansible_check_mode
+  changed_when: false
+  failed_when: false
+
+# Heal path: a host installed by an earlier version of this role already has
+# .venv/ and openrvdas_nginx.conf present with no excludes registered, so the
+# git update below would abort. Registering them here clears that on the next
+# run. Skipped on a first install (no .git/modules yet), which is why the same
+# tasks are included again after submodule init.
+- name: Register React submodule excludes before git update
+  ansible.builtin.include_tasks: react_submodule_excludes.yml
+  vars:
+    _exclude_phase: heal
+  when: openrvdas_web_ui == 'react'
 
 - name: Clone or update OpenRVDAS repository
   ansible.builtin.git:
@@ -18,3 +58,25 @@
     http_proxy: "{{ http_proxy }}"
     https_proxy: "{{ http_proxy }}"
   notify: restart supervisor
+
+- name: Initialize git submodules (React mode)
+  ansible.builtin.command:
+    cmd: git submodule update --init
+    chdir: "{{ install_root }}/openrvdas"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: openrvdas_web_ui == 'react'
+  register: _submodule_init
+  changed_when: _submodule_init.stdout != ''
+  environment:
+    http_proxy: "{{ http_proxy }}"
+    https_proxy: "{{ http_proxy }}"
+
+# First-install path: .git/modules exists only after submodule init, so this is
+# where a fresh host registers the excludes. Doing it during run 1 keeps the
+# second run — the one CI measures for idempotency — at its steady state.
+- name: Register React submodule excludes after submodule init
+  ansible.builtin.include_tasks: react_submodule_excludes.yml
+  vars:
+    _exclude_phase: first install
+  when: openrvdas_web_ui == 'react'

@@ -31,6 +31,20 @@
   when: ansible_connection != 'local'
   failed_when: false
 
+- name: Install Node.js 20 for React UI build (RedHat)
+  when: openrvdas_web_ui == 'react'
+  block:
+    - name: Register NodeSource Node.js 20 repository
+      ansible.builtin.shell: curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+      args:
+        creates: /etc/yum.repos.d/nodesource-nodejs.repo
+      changed_when: false
+
+    - name: Install nodejs
+      ansible.builtin.dnf:
+        name: nodejs
+        state: present
+
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:
     name: nginx

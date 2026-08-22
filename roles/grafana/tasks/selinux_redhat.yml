@@ -1,0 +1,56 @@
+---
+# Grafana cannot use InfluxDB as a datasource on RedHat-family hosts with
+# SELinux enforcing: the confined grafana_t domain is denied the outbound TCP
+# connection. Compile and load a small policy module to allow it. Mirrors the
+# getenforce guard pattern used in roles/openrvdas/tasks/main.yml.
+- name: Configure Grafana to InfluxDB SELinux policy
+  block:
+    - name: Check whether SELinux is enforcing
+      ansible.builtin.command: getenforce
+      register: grafana_selinux_status
+      changed_when: false
+      failed_when: false
+
+    - name: Apply Grafana to InfluxDB SELinux module
+      when: grafana_selinux_status.stdout == "Enforcing"
+      become: true
+      block:
+        - name: Install SELinux policy build tools
+          ansible.builtin.package:
+            name:
+              - checkpolicy
+              - policycoreutils-devel
+            state: present
+
+        - name: Check whether grafana-influx SELinux module is already loaded
+          ansible.builtin.command: semodule -l
+          register: grafana_selinux_modules
+          changed_when: false
+
+        - name: Build and install grafana-influx SELinux module
+          when: "'grafana-influx' not in grafana_selinux_modules.stdout"
+          block:
+            - name: Copy grafana-influx SELinux policy source
+              ansible.builtin.copy:
+                src: grafana-influx.te
+                dest: /etc/selinux/grafana-influx.te
+                mode: "0644"
+
+            - name: Compile grafana-influx SELinux module
+              ansible.builtin.command: >-
+                checkmodule -M -m
+                -o /etc/selinux/grafana-influx.mod
+                /etc/selinux/grafana-influx.te
+              changed_when: true
+
+            - name: Package grafana-influx SELinux module
+              ansible.builtin.command: >-
+                semodule_package
+                -o /etc/selinux/grafana-influx.pp
+                -m /etc/selinux/grafana-influx.mod
+              changed_when: true
+
+            - name: Install grafana-influx SELinux module
+              ansible.builtin.command: semodule -i /etc/selinux/grafana-influx.pp
+              changed_when: true
+  tags: [grafana, selinux]

@@ -4,7 +4,7 @@
   when: use_ssl
   tags: [nginx, ssl]
 
-- name: Copy uwsgi_params from system nginx into project
+- name: Copy uwsgi_params from system nginx into project (Django mode)
   ansible.builtin.copy:
     src: "{{ nginx_uwsgi_params_src }}"
     dest: "{{ install_root }}/openrvdas/django_gui/uwsgi_params"
@@ -12,15 +12,28 @@
     owner: "{{ rvdas_user }}"
     group: "{{ rvdas_group }}"
     mode: "0644"
+  when: openrvdas_web_ui != 'react'
   tags: [nginx]
 
-- name: Render nginx configuration
+- name: Render nginx configuration (Django mode)
   ansible.builtin.template:
     src: openrvdas_nginx.conf.j2
     dest: "{{ install_root }}/openrvdas/django_gui/openrvdas_nginx.conf"
     owner: "{{ rvdas_user }}"
     group: "{{ rvdas_group }}"
     mode: "0644"
+  when: openrvdas_web_ui != 'react'
+  notify: reload supervisor
+  tags: [nginx]
+
+- name: Render nginx configuration (React mode)
+  ansible.builtin.template:
+    src: openrvdas_nginx_react.conf.j2
+    dest: "{{ install_root }}/openrvdas/web_frontend/openrvdas_nginx.conf"
+    owner: "{{ rvdas_user }}"
+    group: "{{ rvdas_group }}"
+    mode: "0644"
+  when: openrvdas_web_ui == 'react'
   notify: reload supervisor
   tags: [nginx]
 

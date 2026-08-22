@@ -15,6 +15,14 @@
   become: true
   changed_when: true
 
+- name: Install Node.js for React UI build (Void Linux)
+  ansible.builtin.shell:
+    cmd: xbps-install -Sy nodejs
+  become: true
+  register: _nodejs_xbps_result
+  changed_when: "'installed successfully' in _nodejs_xbps_result.stdout"
+  when: openrvdas_web_ui == 'react'
+
 - name: Disable system-managed nginx (will run under supervisord)
   ansible.builtin.service:
     name: nginx

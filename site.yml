@@ -87,6 +87,7 @@
       when: use_ssl and have_ssl_certificate
       tags: always
 
+
   roles:
     - role: common
       tags: [common]
@@ -103,7 +104,7 @@
 
     - role: uwsgi
       tags: [uwsgi]
-      when: install_gui
+      when: install_gui and openrvdas_web_ui != 'react'
 
     - role: supervisor
       tags: [supervisor]

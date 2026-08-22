@@ -1,4 +1,16 @@
 ---
+# FastAPI (web_backend) requires Python 3.10+. Check python_bin here, after the
+# packages role has installed it, rather than in pre_tasks where it may not exist yet.
+- name: Validate python_bin is 3.10+ for React mode
+  ansible.builtin.command:
+    cmd: >-
+      {{ python_bin }} -c
+      "import sys; v=sys.version_info;
+      assert (v.major,v.minor)>=(3,10),
+      f'python_bin {sys.executable} is {v.major}.{v.minor} — React mode requires 3.10+'"
+  changed_when: false
+  when: openrvdas_web_ui == 'react'
+
 - name: Bootstrap virtual environment with latest pip, wheel, and setuptools
   ansible.builtin.pip:
     name:
@@ -37,3 +49,46 @@
   become: true
   become_user: "{{ rvdas_user }}"
   when: _pyproject_toml.stat.exists
+  changed_when: false
+
+# React mode: install FastAPI bridge deps into main venv so logger_manager can
+# import async_fastapi_server_api when started with --database fastapi.
+- name: Install FastAPI bridge dependencies into main venv (React mode)
+  ansible.builtin.pip:
+    name:
+      - fastapi
+      - sqlalchemy
+      - aiosqlite
+      - greenlet
+      - pydantic
+      - pydantic-settings
+    virtualenv: "{{ install_root }}/openrvdas/venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+    extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: openrvdas_web_ui == 'react'
+
+# React mode: create a separate venv for web_backend (FastAPI + uvicorn)
+- name: Bootstrap web_backend virtual environment (React mode)
+  ansible.builtin.pip:
+    name:
+      - pip
+      - wheel
+      - setuptools
+    state: latest
+    virtualenv: "{{ install_root }}/openrvdas/web_backend/.venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: openrvdas_web_ui == 'react'
+
+- name: Install web_backend Python requirements (React mode)
+  ansible.builtin.pip:
+    requirements: "{{ install_root }}/openrvdas/web_backend/requirements.txt"
+    virtualenv: "{{ install_root }}/openrvdas/web_backend/.venv"
+    virtualenv_command: "{{ python_bin }} -m venv"
+    extra_args: "{{ '--proxy ' + http_proxy if http_proxy else '' }}"
+  become: true
+  become_user: "{{ rvdas_user }}"
+  when: openrvdas_web_ui == 'react'

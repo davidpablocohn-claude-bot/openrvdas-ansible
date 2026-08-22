@@ -248,6 +248,8 @@ PREF_SSL_CRT_LOCATION='${SSL_CRT_LOCATION}'
 PREF_SSL_KEY_LOCATION='${SSL_KEY_LOCATION}'
 PREF_OPENRVDAS_AUTOSTART='${OPENRVDAS_AUTOSTART}'
 PREF_INSTALL_GUI='${INSTALL_GUI}'
+PREF_OPENRVDAS_WEB_UI='${OPENRVDAS_WEB_UI}'
+PREF_WEB_ADMIN_USER='${WEB_ADMIN_USER}'
 PREF_INSTALL_FIREWALLD='${INSTALL_FIREWALLD}'
 PREF_INSTALL_UFW='${INSTALL_UFW}'
 PREF_UFW_LOCALHOST_ONLY='${UFW_LOCALHOST_ONLY}'
@@ -583,7 +585,22 @@ fi
 section "Features"
 
 ask_yn OPENRVDAS_AUTOSTART "Start services automatically on boot?" "${PREF_OPENRVDAS_AUTOSTART:-yes}"
-ask_yn INSTALL_GUI "Install nginx + uWSGI web interface?" "${PREF_INSTALL_GUI:-yes}"
+ask_yn INSTALL_GUI "Install nginx web interface?" "${PREF_INSTALL_GUI:-yes}"
+if [ "$INSTALL_GUI" = "yes" ]; then
+    echo "  Web UI backend options:"
+    echo "    django — classic Django/uWSGI interface"
+    echo "    react  — new React/FastAPI interface"
+    echo "    none   — install nginx only (no web backend)"
+    while true; do
+        ask OPENRVDAS_WEB_UI "Web UI backend (django/react/none)" "${PREF_OPENRVDAS_WEB_UI:-django}"
+        if echo "django react none" | grep -qw "$OPENRVDAS_WEB_UI"; then
+            break
+        fi
+        echo "    Invalid choice '$OPENRVDAS_WEB_UI'. Please enter: django, react, or none"
+    done
+else
+    OPENRVDAS_WEB_UI="none"
+fi
 
 if [ "$OS_TYPE" = "centos" ] || [ "$OS_TYPE" = "rocky" ] || [ "$OS_TYPE" = "alma" ]; then
     ask_yn INSTALL_FIREWALLD "Configure firewalld?" "${PREF_INSTALL_FIREWALLD:-no}"
@@ -685,6 +702,7 @@ section "Passwords"
 EXISTING_RVDAS_DB_PASS=""
 EXISTING_SUPERVISOR_PASS=""
 EXISTING_RVDAS_USER_PASS=""
+EXISTING_WEB_ADMIN_PASS=""
 if [ -f "$SCRIPT_DIR/vault/secrets.yml" ] && [ -f "$VAULT_PASS_FILE" ]; then
     _decrypted="$(ansible-vault view "$SCRIPT_DIR/vault/secrets.yml" \
         --vault-password-file "$VAULT_PASS_FILE" 2>/dev/null)" || _decrypted=""
@@ -703,12 +721,14 @@ def extract(key):
 print(extract("rvdas_database_password"))
 print(extract("supervisord_webinterface_pass"))
 print(extract("rvdas_user_password"))
+print(extract("web_admin_password"))
 PYEOF
         _parsed="$(printf '%s' "$_decrypted" | python3 "$_PY_PARSE" 2>/dev/null)" || _parsed=""
         rm -f "$_PY_PARSE"
         EXISTING_RVDAS_DB_PASS="$(echo "$_parsed" | sed -n '1p')"
         EXISTING_SUPERVISOR_PASS="$(echo "$_parsed" | sed -n '2p')"
         EXISTING_RVDAS_USER_PASS="$(echo "$_parsed" | sed -n '3p')"
+        EXISTING_WEB_ADMIN_PASS="$(echo "$_parsed" | sed -n '4p')"
         unset _parsed
     fi
     unset _decrypted
@@ -721,10 +741,17 @@ if [ "$ACCEPT_DEFAULTS" = "yes" ]; then
         echo "  different vault password. Re-run without --accept-defaults." >&2
         exit 1
     fi
+    if [ "$OPENRVDAS_WEB_UI" = "react" ] && [ -z "$EXISTING_WEB_ADMIN_PASS" ]; then
+        echo "  ERROR: --accept-defaults with react web UI requires web_admin_password in vault." >&2
+        echo "  Re-run without --accept-defaults to set the React admin password." >&2
+        exit 1
+    fi
     echo "  Using existing passwords from vault/secrets.yml."
     RVDAS_DATABASE_PASSWORD="$EXISTING_RVDAS_DB_PASS"
     SUPERVISORD_WEBINTERFACE_PASS="$EXISTING_SUPERVISOR_PASS"
     RVDAS_USER_PASSWORD="$EXISTING_RVDAS_USER_PASS"
+    WEB_ADMIN_PASSWORD="$EXISTING_WEB_ADMIN_PASS"
+    WEB_ADMIN_USER="${PREF_WEB_ADMIN_USER:-admin}"
 elif [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
     echo "  Existing passwords found in vault/secrets.yml."
     echo ""
@@ -733,6 +760,12 @@ elif [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
         RVDAS_DATABASE_PASSWORD="$EXISTING_RVDAS_DB_PASS"
         SUPERVISORD_WEBINTERFACE_PASS="$EXISTING_SUPERVISOR_PASS"
         RVDAS_USER_PASSWORD="$EXISTING_RVDAS_USER_PASS"
+        WEB_ADMIN_PASSWORD="$EXISTING_WEB_ADMIN_PASS"
+        WEB_ADMIN_USER="${PREF_WEB_ADMIN_USER:-admin}"
+        if [ "$OPENRVDAS_WEB_UI" = "react" ] && [ -z "$WEB_ADMIN_PASSWORD" ]; then
+            ask WEB_ADMIN_USER "React UI admin username" "${PREF_WEB_ADMIN_USER:-admin}"
+            ask_password WEB_ADMIN_PASSWORD "React UI admin password (for initial login)"
+        fi
     else
         echo ""
         ask_password RVDAS_DATABASE_PASSWORD "OpenRVDAS/Django password"
@@ -741,6 +774,13 @@ elif [ -n "$EXISTING_RVDAS_DB_PASS" ]; then
             ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
         else
             SUPERVISORD_WEBINTERFACE_PASS=""
+        fi
+        if [ "$OPENRVDAS_WEB_UI" = "react" ]; then
+            ask WEB_ADMIN_USER "React UI admin username" "${PREF_WEB_ADMIN_USER:-admin}"
+            ask_password WEB_ADMIN_PASSWORD "React UI admin password (for initial login)"
+        else
+            WEB_ADMIN_USER="${PREF_WEB_ADMIN_USER:-admin}"
+            WEB_ADMIN_PASSWORD=""
         fi
     fi
 else
@@ -752,6 +792,13 @@ else
         ask_password SUPERVISORD_WEBINTERFACE_PASS "Supervisord web interface password"
     else
         SUPERVISORD_WEBINTERFACE_PASS=""
+    fi
+    if [ "$OPENRVDAS_WEB_UI" = "react" ]; then
+        ask WEB_ADMIN_USER "React UI admin username" "${PREF_WEB_ADMIN_USER:-admin}"
+        ask_password WEB_ADMIN_PASSWORD "React UI admin password (for initial login)"
+    else
+        WEB_ADMIN_USER="${PREF_WEB_ADMIN_USER:-admin}"
+        WEB_ADMIN_PASSWORD=""
     fi
 fi
 
@@ -809,6 +856,8 @@ ssl_key_location: ${SSL_KEY_LOCATION}
 
 openrvdas_autostart: $(yn_to_bool "$OPENRVDAS_AUTOSTART")
 install_gui: $(yn_to_bool "$INSTALL_GUI")
+openrvdas_web_ui: ${OPENRVDAS_WEB_UI}
+web_admin_user: ${WEB_ADMIN_USER}
 install_firewalld: $(yn_to_bool "$INSTALL_FIREWALLD")
 install_ufw: $(yn_to_bool "$INSTALL_UFW")
 ufw_openrvdas_source: "${UFW_OPENRVDAS_SOURCE}"
@@ -836,6 +885,8 @@ trap cleanup_tmps EXIT
 RVDAS_DATABASE_PASSWORD="$RVDAS_DATABASE_PASSWORD" \
 RVDAS_USER_PASSWORD="$RVDAS_USER_PASSWORD" \
 SUPERVISORD_WEBINTERFACE_PASS="$SUPERVISORD_WEBINTERFACE_PASS" \
+OPENRVDAS_WEB_UI="$OPENRVDAS_WEB_UI" \
+WEB_ADMIN_PASSWORD="$WEB_ADMIN_PASSWORD" \
 python3 - > "$SECRETS_TMP" <<'PYEOF'
 import os
 
@@ -850,6 +901,8 @@ lines = [
     f"rvdas_user_password: {yq(os.environ['RVDAS_USER_PASSWORD'])}",
     f"supervisord_webinterface_pass: {yq(os.environ['SUPERVISORD_WEBINTERFACE_PASS'])}",
 ]
+if os.environ.get('OPENRVDAS_WEB_UI') == 'react':
+    lines.append(f"web_admin_password: {yq(os.environ['WEB_ADMIN_PASSWORD'])}")
 print("\n".join(lines))
 PYEOF
 
